@@ -1,0 +1,24 @@
+{
+  "name": "oversold-medusa",
+  "version": "2.19.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "medusa build",
+    "start": "medusa start"
+  },
+  "dependencies": {
+    "@medusajs/cli": "2.19.0",
+    "@medusajs/framework": "2.19.0",
+    "@medusajs/medusa": "2.19.0"
+  },
+  "devDependencies": {
+    "@swc/core": "1.16.18",
+    "@types/node": "22.20.5",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
