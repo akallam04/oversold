@@ -14,6 +14,7 @@ import {
   createShippingProfilesWorkflow,
   createStockLocationsWorkflow,
   createTaxRegionsWorkflow,
+  createUsersWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
   updateStoresWorkflow,
@@ -21,7 +22,44 @@ import {
 
 const SKUS = ["OVS-PIECE", "OVS-TWOPACK", "OVS-SOLO"]
 
+async function ensureAdmin(container: ExecArgs["container"]) {
+  const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
+  const email = process.env.MEDUSA_ADMIN_EMAIL
+  const password = process.env.MEDUSA_ADMIN_PASSWORD
+  if (!email || !password) {
+    throw new Error("oversold seed: MEDUSA_ADMIN_EMAIL and MEDUSA_ADMIN_PASSWORD must be set")
+  }
+
+  const users = container.resolve(Modules.USER)
+  const [existing] = await users.listUsers({ email })
+  if (existing) {
+    logger.info("oversold seed: admin user already exists")
+    return
+  }
+
+  const {
+    result: [user],
+  } = await createUsersWorkflow(container).run({
+    input: { users: [{ email }] },
+  })
+
+  const auth = container.resolve(Modules.AUTH)
+  const { authIdentity, error } = await auth.register("emailpass", {
+    body: { email, password },
+  })
+  if (error || !authIdentity) {
+    throw new Error(`oversold seed: could not register admin identity: ${error}`)
+  }
+  await auth.updateAuthIdentities({
+    id: authIdentity.id,
+    app_metadata: { user_id: user.id },
+  })
+  logger.info("oversold seed: admin user created")
+}
+
 export default async function seed({ container }: ExecArgs) {
+  await ensureAdmin(container)
+
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const link = container.resolve(ContainerRegistrationKeys.LINK)
   const query = container.resolve(ContainerRegistrationKeys.QUERY)

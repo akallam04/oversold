@@ -28,7 +28,7 @@ env-check:
 	fi
 
 up: env-check
-	docker compose up -d --build --wait
+	docker compose up -d --build --wait medusa
 
 down:
 	docker compose down -v
