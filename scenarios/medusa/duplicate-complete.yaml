@@ -1,0 +1,36 @@
+schema: oversold.scenario/v1
+name: duplicate-complete
+description: >
+  One cart with OVS-PIECE 1, completed by two actions released together on the
+  same server.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 10
+carts:
+  main:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 1
+race:
+  - id: first
+    server: 1
+    do: complete
+    cart: main
+  - id: second
+    server: 1
+    do: complete
+    cart: main
+timing:
+  release: together
+faults: []
+runs: 3
+seed: 4
+checks:
+  - no_oversell
+  - reserved_matches_reservations
+  - one_order_per_cart
+  - no_orphaned_orders

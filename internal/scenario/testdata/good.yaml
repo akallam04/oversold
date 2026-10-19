@@ -1,0 +1,42 @@
+schema: oversold.scenario/v1
+name: good-example
+description: Two carts, two actions, released together.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 2
+stock:
+  WIDGET: 6
+  SOLO: 1
+carts:
+  zeta:
+    server: 2
+    lines:
+      - sku: OVS-PIECE
+        qty: 4
+  alpha:
+    server: 1
+    lines:
+      - sku: OVS-TWOPACK
+        qty: 1
+      - sku: OVS-SOLO
+        qty: 1
+race:
+  - id: first
+    server: 1
+    do: complete
+    cart: zeta
+  - id: second
+    server: 2
+    do: complete
+    cart: zeta
+timing:
+  release: together
+  jitter_ms: [0, 5]
+  request_timeout_ms: 5000
+faults: []
+runs: 3
+seed: 42
+checks:
+  - no_oversell
+  - one_order_per_cart

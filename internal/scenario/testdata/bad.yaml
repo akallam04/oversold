@@ -1,0 +1,32 @@
+schema: oversold.scenario/v2
+name: Bad_Name
+description: Has one of each problem.
+target:
+  engine: medusa
+  version: 2.19.0
+  servers: 1
+  colour: blue
+stock:
+  GADGET: 3
+carts:
+  main:
+    server: 1
+    lines:
+      - sku: OVS-NOPE
+        qty: 1
+race:
+  - id: only
+    server: 2
+    do: refund
+    cart: missing
+timing:
+  release: whenever
+  jitter_ms: [5, 1]
+  request_timeout_ms: 10
+faults:
+  - kind: drop-response
+runs: 1001
+seed: 7
+checks:
+  - no_oversell
+  - no_free_lunch
