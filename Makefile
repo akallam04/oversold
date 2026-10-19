@@ -1,7 +1,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: tools build test vet up down ps logs psql clean env-check
+.PHONY: tools build test vet images up down ps logs psql clean env-check
 
 tools:
 	@sh scripts/check-tools.sh
@@ -26,6 +26,12 @@ env-check:
 		echo ".env is missing. Run: cp .env.example .env" >&2; \
 		exit 1; \
 	fi
+
+images: env-check
+	@for v in $$(ls targets/medusa/versions); do \
+		echo "building oversold-medusa:$$v"; \
+		MEDUSA_VERSION=$$v docker compose build medusa-migrate || exit 1; \
+	done
 
 up: env-check
 	docker compose up -d --build --wait medusa

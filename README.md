@@ -19,7 +19,7 @@ Early setup. There are no results yet. Every number added later comes with the r
 
 ## Targets
 
-- Medusa 2.21.2, built from a committed npm lockfile and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`.
+- Medusa 2.21.2 and 2.19.0, each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>`) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
 - Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001, shares the same database and starts only for scenarios that ask for two servers.
 - Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine. No Redis.
 - Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock before a run.
@@ -70,22 +70,25 @@ make build
 
 In `.env`, replace each `change-me` value with a random one, for example from `openssl rand -hex 32`. `MEDUSA_ADMIN_EMAIL` and `MEDUSA_ADMIN_PASSWORD` are the local admin user the seed creates.
 
-`make up` builds the Medusa image if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
+`make images` builds one image per version under `targets/medusa/versions/`. `make up` builds the image for `MEDUSA_VERSION` in `.env` if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
 
 ```sh
 make up
 ./bin/oversold validate scenarios/medusa/normal-checkout.yaml
 ./bin/oversold run scenarios/medusa/normal-checkout.yaml
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
+./bin/oversold run scenarios/medusa/last-unit-two-servers.yaml --runs 3 --version 2.19.0
 ./bin/oversold check runs/<folder>
+./bin/oversold export runs/<folder> <dest>
+make images
 make psql DB=medusa
 make logs
 make down
 ```
 
-`oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>/`. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
+`oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>-<version>/`. It builds the Medusa image and template database for a version the first time that version runs. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
 
-`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker.
+`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker. It reads plain and gzipped histories. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
@@ -96,7 +99,7 @@ Oversold only runs against local copies it starts in Docker, never live stores o
 ## Project layout
 
 ```
-cmd/oversold/                  CLI entry point: validate, run, check
+cmd/oversold/                  CLI entry point: validate, run, check, export
 internal/scenario/             scenario format v1, strict decoding and validation
 internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts
 internal/checks/               the four checks, pure functions over one history

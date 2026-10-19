@@ -5,6 +5,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 ```sh
 ./bin/oversold validate scenarios/medusa/duplicate-complete.yaml
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
+./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 3 --version 2.19.0
 ```
 
 ## Decoding rules
@@ -22,11 +23,12 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `name` | string | yes | Kebab-case: lowercase letters, digits and single dashes, at most 64 characters. Used in the output folder name. |
 | `description` | string | yes | Plain text. Not empty. |
 | `target.engine` | string | yes | Only `medusa`. |
-| `target.version` | string | yes | A Medusa version Oversold builds an image for. Only `2.21.2` for now. Must also match `MEDUSA_VERSION` in `.env`. |
+| `target.version` | string | yes | A Medusa version Oversold builds an image for: `2.19.0` or `2.21.2`. Each version has its own image (`oversold-medusa:<version>`) and its own template database. `oversold run --version X` runs the file against version X instead, and the history and report record both. |
 | `target.servers` | integer | yes | `1` or `2`. With 2, a second Medusa server (`medusa-2` on 127.0.0.1:9001) runs on the same database. |
 | `stock` | map | no | Inventory SKU to stocked quantity, from 0 to 1000000. Keys are `WIDGET` or `SOLO`. Applied after the reset through the Admin API. Items not listed keep their seeded stock. |
 | `carts` | map | yes | Cart name (kebab-case) to a cart. At least one cart. |
 | `carts.<name>.server` | integer | yes | The server the cart is built on, from 1 to `target.servers`. |
+| `carts.<name>.count` | integer | no | From 1 to 100, default 1. With a count of N above 1, the scenario gets N identical carts named `<name>-1` to `<name>-N`, all on the cart's server. With 1, the cart keeps its name. |
 | `carts.<name>.lines` | list | yes | At least one line. |
 | `carts.<name>.lines[].sku` | string | yes | A variant SKU from the catalog below. A SKU may appear once per cart. |
 | `carts.<name>.lines[].qty` | integer | yes | From 1 to 1000. |
@@ -34,7 +36,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `race[].id` | string | yes | Kebab-case, unique in the scenario. |
 | `race[].server` | integer | yes | The server the action is sent to, from 1 to `target.servers`. |
 | `race[].do` | string | yes | Only `complete` for now. Sends `POST /store/carts/{id}/complete`. |
-| `race[].cart` | string | yes | A cart name from `carts`. Two actions may name the same cart. |
+| `race[].cart` | string | yes | A cart name from `carts`. Two actions may name the same cart. An action on a cart with a count of N above 1 becomes N actions, ids `<id>-1` to `<id>-N`, one per copy, released with the rest. |
 | `timing.release` | string | yes | `together`: every race action waits on one barrier and all are released at once. `sequential`: actions run one after another in the listed order, each waiting for the previous response. |
 | `timing.jitter_ms` | [min, max] | no | Extra delay before each race action, drawn from a seeded random source. `0 <= min <= max <= 10000`. Default: no delay. |
 | `timing.request_timeout_ms` | integer | no | Timeout for every HTTP request in the run, from 100 to 120000. Default 30000. |
@@ -43,7 +45,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `seed` | integer | yes | Seeds the jitter. The same seed and run index always give the same delays. |
 | `checks` | list | no | Check names from the fixed list below, each at most once. Leave the field out to run all four. An empty list, or the field with no value, is an error. |
 
-Carts are prepared in the order they appear in the file.
+Carts are prepared in the order they appear in the file, copies of a counted cart in number order. After expanding counts, cart names and action ids must still be unique, and a scenario may have at most 200 race actions.
 
 ## Catalog
 

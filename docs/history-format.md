@@ -3,7 +3,7 @@
 `oversold run` writes one JSON file per run:
 
 ```
-runs/<UTC start time>-<scenario name>/
+runs/<UTC start time>-<scenario name>-<medusa version used>/
   <scenario file>.yaml     exact copy of the scenario that was run
   run-001.json             history of run 1
   run-002.json             history of run 2
@@ -11,6 +11,8 @@ runs/<UTC start time>-<scenario name>/
   report.json              verdict counts and every run's verdicts
   report.md                the same report as a table
 ```
+
+Histories can also be stored gzipped as `run-NNN.json.gz`. `oversold check` reads both forms. `oversold export <run folder> <dest>` copies the scenario file, the report and every history, gzipped, into an empty `<dest>`, with the report's links pointing at the gzipped files. `oversold check` on the export gives the same verdicts.
 
 A history records what Oversold sent, what came back, the database rows before and after the race, and the verdict of each chosen check. The verdicts are computed from the rest of the file alone. `oversold check <run folder>` recomputes them with the current rules and rewrites the report. It never changes a history.
 
@@ -54,7 +56,8 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | Field | Meaning |
 |---|---|
 | `engine` | `medusa`. |
-| `scenario_version` | The version the scenario asked for. |
+| `scenario_version` | The version in the scenario file. |
+| `version` | The version this run used: the file's version, or the one given with `oversold run --version`. |
 | `servers[].index` | Server number used in the scenario (1 or 2). |
 | `servers[].service` | Compose service name (`medusa` or `medusa-2`). |
 | `servers[].url` | Base URL Oversold used. Always on 127.0.0.1. |
@@ -74,6 +77,7 @@ Oversold refuses to start a run if any server reports a Medusa version other tha
 | `start`, `healthy` | Wall-clock time the reset began and the time every server answered `GET /health` with 200. |
 | `start_ns`, `healthy_ns` | The same moments as monotonic offsets from the start of the run. |
 | `template_created` | `true` if this run had to build the template first. |
+| `image_built` | `true` if this run had to build the Medusa image for its version first. |
 
 ## Race
 
@@ -150,4 +154,4 @@ Quantities are written as JSON numbers exactly as Postgres returns them.
 
 ## Report
 
-`report.json` and `report.md` hold the scenario name and file hash, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.
+`report.json` and `report.md` hold the scenario name and file hash, the Medusa version in the file and the versions used, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.
