@@ -34,19 +34,23 @@ The seed creates one US region, one stock location and these SKUs:
 
 ## Scenarios and histories
 
-A scenario is a YAML file that sets stock, prepares carts and races requests against them, then repeats that for a number of runs. Every run starts from a fresh copy of a template database made right after migrate and seed, with the Medusa servers restarted, so runs cannot affect each other. Each run writes one JSON history with every HTTP call, its outcome (`ok`, `failed` or `unknown`) and database snapshots before and after the race. Secrets are masked before a history is written.
+A scenario is a YAML file that sets stock, prepares carts and races requests against them, then repeats that for a number of runs. Every run starts from a fresh copy of a template database made right after migrate and seed, with the Medusa servers restarted, so runs cannot affect each other. Each run writes one JSON history with every HTTP call, its outcome (`ok`, `failed` or `unknown`), database snapshots before and after the race, and the verdict of each chosen check. Secrets are masked before a history is written.
 
 - [docs/scenario-format.md](docs/scenario-format.md): every scenario field and rule, with an example.
 - [docs/history-format.md](docs/history-format.md): every history field, the outcome rules and what gets masked.
+- [docs/checks.md](docs/checks.md): the exact rule behind each check, its version, and when a verdict is inconclusive.
 - [scenarios/medusa/](scenarios/medusa/): the scenarios that ship with Oversold.
 
-Histories are not judged yet. The checks named in scenarios are planned.
+## Checks
 
-## Checks (planned)
+Checks are pure functions over one saved history, so they need no Docker or database. Each has a version, and [docs/checks.md](docs/checks.md) records every change to a rule.
 
-- No oversell, judged from order, reservation and stock rows together, not just the stock counter.
-- One order per cart.
-- No orphaned orders.
+- `no_oversell`: live reservations never exceed stock, and the run's orders never need more units than were stocked at the start of the race. Judged from order, reservation and stock rows, never from Medusa's reserved counter.
+- `reserved_matches_reservations`: Medusa's reserved counter equals the sum of its live reservation rows.
+- `one_order_per_cart`: a cart becomes at most one order, and every successful complete call for it returned the same order.
+- `no_orphaned_orders`: every order comes from a scenario cart and holds the reservations its lines need, and a cart whose completion definitely failed has no order.
+
+A run is `inconclusive` for every check when the harness failed, a snapshot is missing, or the run did not start clean.
 
 ## Prior work
 
@@ -73,14 +77,17 @@ make up
 ./bin/oversold validate scenarios/medusa/normal-checkout.yaml
 ./bin/oversold run scenarios/medusa/normal-checkout.yaml
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
+./bin/oversold check runs/<folder>
 make psql DB=medusa
 make logs
 make down
 ```
 
-`oversold run` prints one line per run and the output folder, `runs/<UTC time>-<scenario name>/`. It exits 0 when all runs finished, 2 for an invalid scenario or bad usage, and 3 when the harness itself failed. It refuses to run if the Docker endpoint is not local.
+`oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>/`. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
 
-`oversold checkout --lines OVS-PIECE:2,OVS-TWOPACK:1 --label normal` runs one checkout against the running Medusa without a reset. It takes a database snapshot, runs one full Store API checkout (cart, line items, email and address, shipping, payment collection, `pp_system_default` session, complete), takes a second snapshot and writes everything to `runs/<UTC time>-<label>.json`. Both commands refuse any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
+`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker.
+
+Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
 ## Safety
 
@@ -89,9 +96,11 @@ Oversold only runs against local copies it starts in Docker, never live stores o
 ## Project layout
 
 ```
-cmd/oversold/                  CLI entry point: validate, run, checkout
+cmd/oversold/                  CLI entry point: validate, run, check
 internal/scenario/             scenario format v1, strict decoding and validation
-internal/runner/               runs a scenario: reset, setup, barrier race, snapshots
+internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts
+internal/checks/               the four checks, pure functions over one history
+internal/report/               report.json and report.md, exit codes
 internal/history/              history format v1, outcome rules and masking
 internal/stack/                Docker Compose control, template database reset, target facts
 internal/medusa/               Store API and Admin API client
@@ -99,7 +108,7 @@ internal/dbstate/              read-only Postgres snapshot of stock, reservation
 internal/localguard/           refuses URLs that are not localhost
 internal/envfile/              reads .env
 scenarios/medusa/              shipped scenarios
-docs/                          scenario and history format docs
+docs/                          scenario format, history format and check rules
 targets/medusa/Dockerfile      builds and runs one pinned Medusa version
 targets/medusa/app/            shared medusa-config.ts, tsconfig and seed script
 targets/medusa/versions/       one pinned package.json and lockfile per Medusa version

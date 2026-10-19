@@ -8,9 +8,11 @@ runs/<UTC start time>-<scenario name>/
   run-001.json             history of run 1
   run-002.json             history of run 2
   ...
+  report.json              verdict counts and every run's verdicts
+  report.md                the same report as a table
 ```
 
-A history records what Oversold sent, what came back, and the database rows before and after the race. It holds no verdicts. Checks will read histories later.
+A history records what Oversold sent, what came back, the database rows before and after the race, and the verdict of each chosen check. The verdicts are computed from the rest of the file alone. `oversold check <run folder>` recomputes them with the current rules and rewrites the report. It never changes a history.
 
 ## Secrets
 
@@ -44,7 +46,8 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | `race` | How the race was released, see below. |
 | `operations` | Every HTTP call in the run, in the order they started. |
 | `before`, `after` | Database snapshots just before the race and 2 seconds after it ended. |
-| `harness_error` | Set when Oversold itself failed. The run is then not usable for checks. |
+| `harness_error` | Set when Oversold itself failed. Every check in the run is then `inconclusive`. |
+| `verdicts` | One entry per chosen check, see below. |
 
 ## Target
 
@@ -57,6 +60,7 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | `servers[].url` | Base URL Oversold used. Always on 127.0.0.1. |
 | `servers[].container_id` | Docker container id after the reset. |
 | `servers[].image_id` | Image id the container runs. |
+| `servers[].started_at` | Container start time reported by Docker. The reset restarts the container, so this changes every run. |
 | `servers[].medusa_version` | `@medusajs/medusa` version read from inside the container. |
 | `postgres_version` | `server_version` reported by Postgres. |
 | `template_database` | Template the `medusa` database was copied from. |
@@ -128,5 +132,22 @@ Both snapshots are read in one read-only, repeatable-read transaction from the `
 | `orders[]` | `order`, `order_item`, `order_line_item` | Orders holding a covered SKU, with their lines at the current order version. |
 | `orders[].payment_collections[]` | `order_payment_collection`, `payment_collection` | Each order's payment collections with status and amount. |
 | `cart_orders[]` | `order_cart` | Cart to order links for those orders. |
+| `cart_lines[]` | `cart_line_item` | Lines of the carts linked to those orders, used to tie reservations made against cart lines. |
 
 Quantities are written as JSON numbers exactly as Postgres returns them.
+
+## Verdicts
+
+| Field | Meaning |
+|---|---|
+| `check` | Check name. |
+| `version` | Version of the check's rule, see [checks.md](checks.md). |
+| `result` | `pass`, `fail` or `inconclusive`. |
+| `reason` | One line saying why. |
+| `evidence[].subject` | What the numbers are about, for example `WIDGET at sloc_...` or `cart main`. |
+| `evidence[].numbers` | The numbers the check compared, for example `stocked_before`, `live_reservations` and `order_units`. |
+| `evidence[].values` | Ids and outcomes behind the numbers. |
+
+## Report
+
+`report.json` and `report.md` hold the scenario name and file hash, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.
