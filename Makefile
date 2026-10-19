@@ -28,7 +28,7 @@ env-check:
 	fi
 
 up: env-check
-	docker compose up -d --wait
+	docker compose up -d --build --wait
 
 down:
 	docker compose down -v
@@ -40,7 +40,7 @@ logs:
 	docker compose logs -f
 
 psql: env-check
-	docker compose exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+	docker compose exec postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$(or $(DB),$$POSTGRES_DB)"'
 
 clean:
 	rm -rf bin
