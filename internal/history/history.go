@@ -3,6 +3,7 @@ package history
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -205,6 +206,7 @@ type Server struct {
 	URL           string `json:"url"`
 	ContainerID   string `json:"container_id"`
 	ImageID       string `json:"image_id"`
+	StartedAt     string `json:"started_at"`
 	MedusaVersion string `json:"medusa_version"`
 }
 
@@ -257,6 +259,44 @@ type History struct {
 	Before       *dbstate.Snapshot `json:"before"`
 	After        *dbstate.Snapshot `json:"after"`
 	HarnessError string            `json:"harness_error,omitempty"`
+	Verdicts     []Verdict         `json:"verdicts,omitempty"`
+}
+
+type Result string
+
+const (
+	Pass         Result = "pass"
+	Fail         Result = "fail"
+	Inconclusive Result = "inconclusive"
+)
+
+type Evidence struct {
+	Subject string                 `json:"subject"`
+	Numbers map[string]json.Number `json:"numbers,omitempty"`
+	Values  map[string]string      `json:"values,omitempty"`
+}
+
+type Verdict struct {
+	Check    string     `json:"check"`
+	Version  int        `json:"version"`
+	Result   Result     `json:"result"`
+	Reason   string     `json:"reason"`
+	Evidence []Evidence `json:"evidence,omitempty"`
+}
+
+func Read(path string) (*History, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	h := &History{}
+	if err := json.Unmarshal(b, h); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if h.Schema != Schema {
+		return nil, fmt.Errorf("%s: schema %q, want %q", path, h.Schema, Schema)
+	}
+	return h, nil
 }
 
 func Write(path string, h *History, m *Masker) error {

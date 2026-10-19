@@ -140,6 +140,14 @@ type Order struct {
 	PaymentCollections []PaymentCollection `json:"payment_collections"`
 }
 
+type CartLine struct {
+	ID         string      `json:"id"`
+	CartID     string      `json:"cart_id"`
+	VariantID  *string     `json:"variant_id"`
+	VariantSKU *string     `json:"variant_sku"`
+	Quantity   json.Number `json:"quantity"`
+}
+
 type CartOrder struct {
 	ID        string     `json:"id"`
 	CartID    string     `json:"cart_id"`
@@ -155,6 +163,7 @@ type Snapshot struct {
 	Reservations    []Reservation      `json:"live_reservations"`
 	Orders          []Order            `json:"orders"`
 	CartOrders      []CartOrder        `json:"cart_orders"`
+	CartLines       []CartLine         `json:"cart_lines"`
 }
 
 func (db *DB) Snapshot(ctx context.Context, variantSKUs []string) (*Snapshot, error) {
@@ -183,6 +192,9 @@ func (db *DB) Snapshot(ctx context.Context, variantSKUs []string) (*Snapshot, er
 		}
 		if s.CartOrders, err = cartOrders(ctx, tx, s.Orders); err != nil {
 			return fmt.Errorf("cart orders: %w", err)
+		}
+		if s.CartLines, err = cartLines(ctx, tx, s.CartOrders); err != nil {
+			return fmt.Errorf("cart lines: %w", err)
 		}
 		return nil
 	})
@@ -343,4 +355,26 @@ func cartOrders(ctx context.Context, tx pgx.Tx, orders []Order) ([]CartOrder, er
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[CartOrder])
+}
+
+func cartLines(ctx context.Context, tx pgx.Tx, links []CartOrder) ([]CartLine, error) {
+	ids := make([]string, 0, len(links))
+	for _, l := range links {
+		ids = append(ids, l.CartID)
+	}
+	rows, err := tx.Query(ctx, `
+		select id, cart_id, variant_id, variant_sku, quantity::text
+		from cart_line_item
+		where cart_id = any($1) and deleted_at is null
+		order by cart_id, variant_sku, id`, ids)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (CartLine, error) {
+		var l CartLine
+		var qty string
+		err := r.Scan(&l.ID, &l.CartID, &l.VariantID, &l.VariantSKU, &qty)
+		l.Quantity = json.Number(qty)
+		return l, err
+	})
 }

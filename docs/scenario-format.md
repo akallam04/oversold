@@ -1,6 +1,6 @@
 # Scenario format v1
 
-A scenario is one YAML file that says which engine to start, how to set up stock and carts, which requests to race, and how many times to repeat the run. `oversold run` executes it. `oversold validate` checks it without running anything.
+A scenario is one YAML file that says which engine to start, how to set up stock and carts, which requests to race, and how many times to repeat the run. `oversold run` executes it and checks every run. `oversold validate` checks the file without running anything.
 
 ```sh
 ./bin/oversold validate scenarios/medusa/duplicate-complete.yaml
@@ -41,7 +41,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `faults` | list | no | Must be empty or absent. Fault kinds come later. |
 | `runs` | integer | yes | From 1 to 1000. `oversold run --runs N` overrides it. |
 | `seed` | integer | yes | Seeds the jitter. The same seed and run index always give the same delays. |
-| `checks` | list | no | Check names from the fixed list below, each at most once. |
+| `checks` | list | no | Check names from the fixed list below, each at most once. Leave the field out to run all four. An empty list, or the field with no value, is an error. |
 
 Carts are prepared in the order they appear in the file.
 
@@ -57,14 +57,14 @@ The seed creates a fixed catalog. Scenarios can only use these SKUs.
 
 ## Checks
 
-A scenario chooses which checks apply to it. Checks take no parameters, so a scenario can pick them but never change how they work. The names are validated now. The checks themselves are not built yet, and no run is judged.
+A scenario chooses which checks apply to it. Checks take no parameters, so a scenario can pick them but never change how they work. [checks.md](checks.md) has each rule's exact definition and version.
 
 | Name | Meaning |
 |---|---|
-| `no_oversell` | Units promised to orders never exceed stock, judged from order, reservation and stock rows together. |
+| `no_oversell` | Live reservations never exceed stock, and the run's orders never need more units than were stocked at the start of the race. |
 | `reserved_matches_reservations` | The reserved quantity on each inventory level equals the sum of its live reservations. |
-| `one_order_per_cart` | A cart is linked to at most one order. |
-| `no_orphaned_orders` | Every order is linked to a cart and has its reservations. |
+| `one_order_per_cart` | A cart is linked to at most one order, and every `ok` complete call for a cart returned the same order. |
+| `no_orphaned_orders` | Every order comes from a scenario cart and holds the reservations its lines need, and a cart whose completion definitely failed has no order. |
 
 ## What one run does
 
@@ -75,11 +75,20 @@ A scenario chooses which checks apply to it. Checks take no parameters, so a sce
 5. Take a database snapshot.
 6. Open one HTTP connection per race action with a `GET /health` warm-up, then release the actions.
 7. Wait 2 seconds. This settle time is fixed in code.
-8. Take a second database snapshot and write the history.
+8. Take a second database snapshot, compute the verdict of every chosen check, and write the history.
 
-Any setup call that does not end `ok` is a harness error. The history for that run is still written, and `oversold run` stops with exit code 3.
+Any setup call that does not end `ok` is a harness error. That run is written with every check `inconclusive`, and the next run starts. `oversold run` stops early only after 3 harness errors in a row, and the report says so.
 
-Exit codes: 0 when all runs finished, 2 for an invalid scenario or bad usage, 3 when the harness itself failed.
+After the last run, `oversold run` writes `report.json` and `report.md` in the run folder and prints the report path last. `oversold check <run folder>` recomputes every verdict and the report from the saved histories, with no Docker.
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | Every chosen check passed in every run. |
+| 1 | At least one check failed in at least one run. |
+| 2 | Invalid scenario or bad usage. |
+| 3 | Nothing failed, but at least one run was inconclusive, or the harness could not start. |
 
 ## Example
 

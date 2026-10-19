@@ -47,6 +47,8 @@ var Catalog = []Variant{
 
 var InventorySKUs = []string{"WIDGET", "SOLO"}
 
+var SeededStock = map[string]int{"WIDGET": 10, "SOLO": 1}
+
 var Engines = map[string][]string{
 	"medusa": {"2.21.2"},
 }
@@ -89,9 +91,10 @@ type Scenario struct {
 	Faults      []any           `yaml:"faults"`
 	Runs        int             `yaml:"runs"`
 	Seed        *int64          `yaml:"seed"`
-	Checks      []string        `yaml:"checks"`
+	Checks      *[]string       `yaml:"checks"`
 
-	CartOrder []string `yaml:"-"`
+	CartOrder   []string `yaml:"-"`
+	checksIsNil bool
 }
 
 type Target struct {
@@ -121,6 +124,17 @@ type Timing struct {
 	Release          string `yaml:"release"`
 	JitterMS         []int  `yaml:"jitter_ms"`
 	RequestTimeoutMS *int   `yaml:"request_timeout_ms"`
+}
+
+func (s *Scenario) SelectedChecks() []string {
+	if s.Checks == nil {
+		out := make([]string, len(Checks))
+		copy(out, Checks)
+		return out
+	}
+	out := make([]string, len(*s.Checks))
+	copy(out, *s.Checks)
+	return out
 }
 
 func (s *Scenario) RequestTimeout() time.Duration {
@@ -178,6 +192,7 @@ func Parse(b []byte) (*Scenario, []string) {
 	}
 
 	s.CartOrder = cartOrder(b, s)
+	s.checksIsNil = nullField(b, "checks")
 	problems = append(problems, s.validate()...)
 	return s, problems
 }
@@ -205,6 +220,21 @@ func cartOrder(b []byte, s *Scenario) []string {
 		sort.Strings(order)
 	}
 	return order
+}
+
+func nullField(b []byte, field string) bool {
+	var doc yaml.Node
+	if yaml.Unmarshal(b, &doc) != nil || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return false
+	}
+	root := doc.Content[0]
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == field {
+			v := root.Content[i+1]
+			return v.Kind == yaml.ScalarNode && v.Tag == "!!null"
+		}
+	}
+	return false
 }
 
 var kebab = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -342,8 +372,18 @@ func (s *Scenario) validate() []string {
 		add("seed: required integer")
 	}
 
+	if s.checksIsNil {
+		add("checks: has no value; list check names or leave the field out to run all four")
+	}
+	if s.Checks != nil && len(*s.Checks) == 0 {
+		add("checks: an empty list is not allowed; list check names or leave the field out to run all four")
+	}
+	var chosen []string
+	if s.Checks != nil {
+		chosen = *s.Checks
+	}
 	seenCheck := map[string]bool{}
-	for i, c := range s.Checks {
+	for i, c := range chosen {
 		if !slices.Contains(Checks, c) {
 			add("checks[%d]: unknown check %q, want one of %s", i, c, strings.Join(Checks, ", "))
 		}

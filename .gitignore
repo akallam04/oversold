@@ -1,6 +1,6 @@
 .env
 bin/
-runs/
+/runs/
 *.test
 *.out
 coverage.*

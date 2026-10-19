@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -99,6 +100,9 @@ func TestSingleProblems(t *testing.T) {
 			return strings.Replace(s, "timing:", "  - id: a\n    server: 1\n    do: complete\n    cart: main\ntiming:", 1)
 		}, `race[1].id: "a" is used twice`},
 		{"two documents", func(s string) string { return s + "---\nname: other\n" }, "exactly one YAML document"},
+		{"empty checks", func(s string) string { return strings.Replace(s, "checks:\n  - no_oversell\n", "checks: []\n", 1) }, "checks: an empty list is not allowed"},
+		{"null checks", func(s string) string { return strings.Replace(s, "checks:\n  - no_oversell\n", "checks:\n", 1) }, "checks: has no value"},
+		{"duplicate check", func(s string) string { return s + "  - no_oversell\n" }, `checks[1]: "no_oversell" is listed twice`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -191,5 +195,34 @@ func TestDocsExampleIsValid(t *testing.T) {
 	end := strings.Index(rest, "```")
 	if _, problems := Parse([]byte(rest[:end])); len(problems) != 0 {
 		t.Errorf("docs example is invalid: %q", problems)
+	}
+}
+
+func TestChecksDefaultToAll(t *testing.T) {
+	src := strings.Replace(minimal(""), "checks:\n  - no_oversell\n", "", 1)
+	s, problems := Parse([]byte(src))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %q", problems)
+	}
+	if got := s.SelectedChecks(); !slices.Equal(got, Checks) {
+		t.Errorf("selected = %q, want all four", got)
+	}
+	s, _ = Parse([]byte(minimal("  - one_order_per_cart\n")))
+	if got := s.SelectedChecks(); !slices.Equal(got, []string{"no_oversell", "one_order_per_cart"}) {
+		t.Errorf("selected = %q", got)
+	}
+}
+
+func TestSeededStockMatchesSeedScript(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "targets", "medusa", "app", "src", "scripts", "seed.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := strings.Join(strings.Fields(string(b)), " ")
+	for sku, qty := range SeededStock {
+		want := fmt.Sprintf(`sku: "%s", title: "%s", location_levels: [{ location_id: location.id, stocked_quantity: %d }]`, sku, sku[:1]+strings.ToLower(sku[1:]), qty)
+		if !strings.Contains(src, want) {
+			t.Errorf("seed.ts does not stock %s with %d", sku, qty)
+		}
 	}
 }
