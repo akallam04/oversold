@@ -11,7 +11,11 @@ var version = "dev"
 const usage = `usage: oversold <command>
 
 commands:
-  checkout  run one checkout against the local Medusa and record it
+  validate  check a scenario file and print every problem
+            oversold validate scenarios/medusa/normal-checkout.yaml
+  run       run a scenario, each run on a fresh database, and write one history per run
+            oversold run scenarios/medusa/normal-checkout.yaml [--runs N]
+  checkout  run one checkout against the running Medusa without a reset
             oversold checkout --lines OVS-PIECE:2,OVS-TWOPACK:1 --label normal
   version   print the version
   help      print this help
@@ -27,6 +31,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch args[0] {
+	case "validate":
+		return validateCmd(args[1:], stdout, stderr)
+	case "run":
+		return runCmd(args[1:], stdout, stderr)
 	case "checkout":
 		return checkoutCmd(args[1:], stdout, stderr)
 	case "version":

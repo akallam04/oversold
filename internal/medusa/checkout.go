@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/akallam04/oversold/internal/history"
 )
 
 const SystemPaymentProvider = "pp_system_default"
@@ -93,76 +95,100 @@ func (c *Client) FindTarget(ctx context.Context, currency, country string, skus 
 	return t, nil
 }
 
-type CheckoutInput struct {
+type CartInput struct {
 	RegionID string
 	Lines    []Line
 	Email    string
 	Address  Address
 }
 
-type CheckoutResult struct {
-	Completed  bool   `json:"completed"`
-	CartID     string `json:"cart_id,omitempty"`
-	OrderID    string `json:"order_id,omitempty"`
-	FailedStep string `json:"failed_step,omitempty"`
-	Error      string `json:"error,omitempty"`
+func BuyerAddress() Address {
+	return Address{
+		FirstName:   "Test",
+		LastName:    "Buyer",
+		Address1:    "1 Main St",
+		City:        "Austin",
+		Province:    "tx",
+		PostalCode:  "78701",
+		CountryCode: "us",
+	}
 }
 
-func (c *Client) Checkout(ctx context.Context, in CheckoutInput) CheckoutResult {
+func (c *Client) PrepareCart(ctx context.Context, in CartInput) (string, error) {
+	cart, err := c.CreateCart(ctx, in.RegionID)
+	if err != nil {
+		return "", err
+	}
+	for _, l := range in.Lines {
+		if _, err := c.AddLineItem(ctx, cart.ID, l.VariantID, l.Quantity); err != nil {
+			return cart.ID, err
+		}
+	}
+	if _, err := c.SetContact(ctx, cart.ID, in.Email, in.Address); err != nil {
+		return cart.ID, err
+	}
+	options, err := c.ListShippingOptions(ctx, cart.ID)
+	if err != nil {
+		return cart.ID, err
+	}
+	if len(options) == 0 {
+		return cart.ID, errors.New("list_shipping_options: no shipping options for cart")
+	}
+	if _, err := c.AddShippingMethod(ctx, cart.ID, options[0].ID); err != nil {
+		return cart.ID, err
+	}
+	pc, err := c.CreatePaymentCollection(ctx, cart.ID)
+	if err != nil {
+		return cart.ID, err
+	}
+	if err := c.CreatePaymentSession(ctx, pc.ID, SystemPaymentProvider); err != nil {
+		return cart.ID, err
+	}
+	return cart.ID, nil
+}
+
+type CheckoutResult struct {
+	Completed  bool            `json:"completed"`
+	Outcome    history.Outcome `json:"outcome,omitempty"`
+	CartID     string          `json:"cart_id,omitempty"`
+	OrderID    string          `json:"order_id,omitempty"`
+	FailedStep string          `json:"failed_step,omitempty"`
+	Error      string          `json:"error,omitempty"`
+}
+
+func (c *Client) Checkout(ctx context.Context, in CartInput) CheckoutResult {
 	var res CheckoutResult
-	fail := func(step string, err error) CheckoutResult {
-		res.FailedStep = step
+	cartID, err := c.PrepareCart(ctx, in)
+	res.CartID = cartID
+	if err != nil {
+		res.FailedStep = stepOf(err)
 		res.Error = err.Error()
 		return res
 	}
-
-	cart, err := c.CreateCart(ctx, in.RegionID)
-	if err != nil {
-		return fail("create_cart", err)
-	}
-	res.CartID = cart.ID
-
-	for _, l := range in.Lines {
-		if _, err := c.AddLineItem(ctx, cart.ID, l.VariantID, l.Quantity); err != nil {
-			return fail("add_line_item", err)
-		}
-	}
-
-	if _, err := c.SetContact(ctx, cart.ID, in.Email, in.Address); err != nil {
-		return fail("set_contact", err)
-	}
-
-	options, err := c.ListShippingOptions(ctx, cart.ID)
-	if err != nil {
-		return fail("list_shipping_options", err)
-	}
-	if len(options) == 0 {
-		return fail("list_shipping_options", errors.New("no shipping options for cart"))
-	}
-	if _, err := c.AddShippingMethod(ctx, cart.ID, options[0].ID); err != nil {
-		return fail("add_shipping_method", err)
-	}
-
-	pc, err := c.CreatePaymentCollection(ctx, cart.ID)
-	if err != nil {
-		return fail("create_payment_collection", err)
-	}
-	if err := c.CreatePaymentSession(ctx, pc.ID, SystemPaymentProvider); err != nil {
-		return fail("create_payment_session", err)
-	}
-
-	done, err := c.CompleteCart(ctx, cart.ID)
-	if err != nil {
-		return fail("complete_cart", err)
-	}
-	if done.Type != "order" || done.Order == nil {
-		msg := "complete returned type " + strconv.Quote(done.Type)
+	done, op, err := c.With(Labels{Phase: history.PhaseRace}).CompleteCart(ctx, cartID)
+	res.Outcome = op.Outcome
+	switch {
+	case err != nil:
+		res.FailedStep = history.StepComplete
+		res.Error = err.Error()
+	case op.Outcome == history.OK:
+		res.Completed = true
+		res.OrderID = done.Order.ID
+	default:
+		res.FailedStep = history.StepComplete
+		res.Error = "complete returned type " + strconv.Quote(done.Type)
 		if done.Error != nil {
-			msg += ": " + done.Error.Message
+			res.Error += ": " + done.Error.Message
 		}
-		return fail("complete_cart", errors.New(msg))
 	}
-	res.Completed = true
-	res.OrderID = done.Order.ID
 	return res
+}
+
+func stepOf(err error) string {
+	var oe *OutcomeError
+	if errors.As(err, &oe) {
+		return oe.Step
+	}
+	step, _, _ := strings.Cut(err.Error(), ":")
+	return step
 }

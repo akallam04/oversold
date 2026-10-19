@@ -2,22 +2,25 @@ package medusa
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/akallam04/oversold/internal/history"
 )
 
-func newTestClient(t *testing.T, h http.Handler, timeout time.Duration) (*Client, *Recorder) {
+func newTestClient(t *testing.T, h http.Handler, timeout time.Duration) (*Client, *history.Recorder) {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	rec := NewRecorder("abc123", "2.21.2")
-	c, err := NewClient(srv.URL, "pk_test", &http.Client{Timeout: timeout}, rec)
+	rec := history.NewRecorder(time.Now(), history.NewMasker("pk_test_key_value"))
+	c, err := NewClient(srv.URL, "pk_test_key_value", &http.Client{Timeout: timeout}, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,14 +28,14 @@ func newTestClient(t *testing.T, h http.Handler, timeout time.Duration) (*Client
 }
 
 func TestNewClientRefusesRemoteHost(t *testing.T) {
-	if _, err := NewClient("http://shop.example.com", "pk", nil, NewRecorder("", "")); err == nil {
+	if _, err := NewClient("http://shop.example.com", "pk", nil, history.NewRecorder(time.Now(), nil)); err == nil {
 		t.Fatal("want error for remote host")
 	}
 }
 
-func TestRecorderSuccess(t *testing.T) {
+func TestRecordsSuccess(t *testing.T) {
 	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("x-publishable-api-key"); got != "pk_test" {
+		if got := r.Header.Get("x-publishable-api-key"); got != "pk_test_key_value" {
 			t.Errorf("publishable key header = %q", got)
 		}
 		body, _ := io.ReadAll(r.Body)
@@ -42,52 +45,36 @@ func TestRecorderSuccess(t *testing.T) {
 		w.Write([]byte(`{"cart":{"id":"cart_1"}}`))
 	}), time.Second)
 
-	cart, err := c.CreateCart(context.Background(), "reg_1")
+	cart, err := c.With(Labels{Cart: "main", Server: 2}).CreateCart(context.Background(), "reg_1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cart.ID != "cart_1" {
 		t.Errorf("cart id = %q", cart.ID)
 	}
-
-	calls := rec.Calls()
-	if len(calls) != 1 {
-		t.Fatalf("got %d calls, want 1", len(calls))
+	ops := rec.Operations()
+	if len(ops) != 1 {
+		t.Fatalf("got %d operations, want 1", len(ops))
 	}
-	got := calls[0]
-	if got.Method != "POST" || got.Path != "/store/carts" || got.Status != 200 || got.Step != "create_cart" {
-		t.Errorf("call = %+v", got)
+	op := ops[0]
+	if op.ID != 1 || op.Phase != history.PhaseSetup || op.Step != "create_cart" || op.Cart != "main" || op.Server != 2 {
+		t.Errorf("labels = %+v", op)
 	}
-	if string(got.RequestBody) != `{"region_id":"reg_1"}` || string(got.ResponseBody) != `{"cart":{"id":"cart_1"}}` {
-		t.Errorf("bodies = %s / %s", got.RequestBody, got.ResponseBody)
+	if op.Method != "POST" || op.Path != "/store/carts" || op.Status != 200 || op.Outcome != history.OK {
+		t.Errorf("op = %+v", op)
 	}
-	if got.Error != "" || got.Timeout {
-		t.Errorf("unexpected error fields: %q %v", got.Error, got.Timeout)
+	if string(op.RequestBody) != `{"region_id":"reg_1"}` || string(op.ResponseBody) != `{"cart":{"id":"cart_1"}}` {
+		t.Errorf("bodies = %s / %s", op.RequestBody, op.ResponseBody)
 	}
-	if got.OversoldCommit != "abc123" || got.MedusaVersion != "2.21.2" {
-		t.Errorf("versions = %q %q", got.OversoldCommit, got.MedusaVersion)
+	if op.Error != "" || op.Timeout || op.StartNS < 0 || op.EndNS < op.StartNS || op.End.Before(op.Start.Time) {
+		t.Errorf("timing or error fields = %+v", op)
 	}
-	if got.Start.Location() != time.UTC || got.End.Location() != time.UTC {
-		t.Errorf("times not UTC: %v %v", got.Start, got.End)
-	}
-	if got.End.Before(got.Start.Time) {
-		t.Errorf("end %v before start %v", got.End, got.Start)
-	}
-	var enc struct {
-		Start string `json:"start"`
-	}
-	b, _ := json.Marshal(got)
-	json.Unmarshal(b, &enc)
-	if _, err := time.Parse(TimestampFormat, enc.Start); err != nil || len(enc.Start) != len(TimestampFormat) {
-		t.Errorf("start %q not in %s: %v", enc.Start, TimestampFormat, err)
-	}
-	var back Call
-	if err := json.Unmarshal(b, &back); err != nil || !back.Start.Equal(got.Start.Time) {
-		t.Errorf("start did not round trip: %v %v", back.Start, err)
+	if op.ConnReused == nil || *op.ConnReused {
+		t.Errorf("first call should be on a new connection: %v", op.ConnReused)
 	}
 }
 
-func TestRecorderHTTPError(t *testing.T) {
+func TestRecordsHTTPError(t *testing.T) {
 	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"type":"not_allowed","message":"Some variant does not have the required inventory"}`))
@@ -97,27 +84,32 @@ func TestRecorderHTTPError(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error")
 	}
-	calls := rec.Calls()
-	if len(calls) != 1 {
-		t.Fatalf("got %d calls", len(calls))
-	}
-	got := calls[0]
-	if got.Status != 400 {
-		t.Errorf("status = %d", got.Status)
-	}
+	op := rec.Operations()[0]
 	want := "http 400 not_allowed: Some variant does not have the required inventory"
-	if got.Error != want {
-		t.Errorf("error = %q, want %q", got.Error, want)
+	if op.Status != 400 || op.Outcome != history.Failed || op.Error != want || op.Timeout {
+		t.Errorf("op = %+v", op)
 	}
 	if !strings.Contains(err.Error(), want) {
 		t.Errorf("returned error = %q", err)
 	}
-	if got.Timeout {
-		t.Error("timeout set on a plain HTTP error")
+}
+
+func TestRecordsServerErrorAsUnknown(t *testing.T) {
+	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("boom"))
+	}), time.Second)
+
+	_, op, err := c.CompleteCart(context.Background(), "cart_1")
+	if err == nil || op.Outcome != history.Unknown || rec.Operations()[0].Outcome != history.Unknown {
+		t.Errorf("err %v, op %+v", err, op)
+	}
+	if string(op.ResponseBody) != `"boom"` {
+		t.Errorf("response body = %s", op.ResponseBody)
 	}
 }
 
-func TestRecorderTimeout(t *testing.T) {
+func TestRecordsTimeoutAsUnknown(t *testing.T) {
 	release := make(chan struct{})
 	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -127,32 +119,67 @@ func TestRecorderTimeout(t *testing.T) {
 	}), 50*time.Millisecond)
 	defer close(release)
 
-	_, err := c.CompleteCart(context.Background(), "cart_1")
-	if err == nil {
+	if _, _, err := c.CompleteCart(context.Background(), "cart_1"); err == nil {
 		t.Fatal("want timeout error")
 	}
-	got := rec.Calls()[0]
-	if !got.Timeout {
-		t.Errorf("timeout not recorded: %+v", got)
+	op := rec.Operations()[0]
+	if !op.Timeout || op.Outcome != history.Unknown || op.Status != 0 || op.Error == "" {
+		t.Errorf("op = %+v", op)
 	}
-	if got.Status != 0 || got.Error == "" {
-		t.Errorf("status %d error %q", got.Status, got.Error)
-	}
-	if d := got.End.Sub(got.Start.Time); d < 50*time.Millisecond {
-		t.Errorf("duration %v shorter than the timeout", d)
+	if d := op.EndNS - op.StartNS; d < int64(50*time.Millisecond) {
+		t.Errorf("duration %dns shorter than the timeout", d)
 	}
 }
 
-func TestRecorderNonJSONBody(t *testing.T) {
+func TestAdminLoginIsMasked(t *testing.T) {
+	const password = "correct-horse-battery-staple"
+	token := "eyJ" + strings.Repeat("h", 20) + ".eyJ" + strings.Repeat("p", 24) + "." + strings.Repeat("s", 22)
+	var gotAuth string
 	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-		w.Write([]byte("upstream down"))
+		switch r.URL.Path {
+		case "/auth/user/emailpass":
+			body, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(body), password) {
+				t.Errorf("server did not get the password: %s", body)
+			}
+			w.Write([]byte(`{"token":"` + token + `"}`))
+		default:
+			gotAuth = r.Header.Get("Authorization")
+			w.Write([]byte(`{"inventory_items":[]}`))
+		}
 	}), time.Second)
 
-	c.ListRegions(context.Background())
-	got := rec.Calls()[0]
-	if string(got.ResponseBody) != `"upstream down"` {
-		t.Errorf("response body = %s", got.ResponseBody)
+	ctx := context.Background()
+	tok, err := c.AdminLogin(ctx, "admin@example.com", password)
+	if err != nil || tok != token {
+		t.Fatalf("login = %q, %v", tok, err)
+	}
+	if _, err := c.WithAdminToken(tok).ListInventoryItems(ctx, "WIDGET"); err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer "+token {
+		t.Errorf("admin call sent Authorization %q", gotAuth)
+	}
+
+	ops := rec.Operations()
+	login := ops[0]
+	if string(login.RequestBody) != `{"email":"admin@example.com","password":"[masked]"}` {
+		t.Errorf("login request body = %s", login.RequestBody)
+	}
+	if string(login.ResponseBody) != `{"token":"[masked]"}` {
+		t.Errorf("login response body = %s", login.ResponseBody)
+	}
+
+	path := filepath.Join(t.TempDir(), "run-001.json")
+	h := &history.History{Schema: history.Schema, Operations: ops, HarnessError: "token was " + token}
+	if err := history.Write(path, h, rec.Masker()); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	for _, leak := range []string{password, token, "pk_test_key_value"} {
+		if strings.Contains(string(b), leak) {
+			t.Errorf("history file leaks %q", leak)
+		}
 	}
 }
 
@@ -163,18 +190,16 @@ func TestCheckoutCallOrder(t *testing.T) {
 		mu.Lock()
 		seen = append(seen, r.Method+" "+r.URL.RequestURI())
 		mu.Unlock()
-		switch {
-		case r.URL.Path == "/store/regions":
+		switch r.URL.Path {
+		case "/store/regions":
 			w.Write([]byte(`{"regions":[{"id":"reg_eu","currency_code":"eur","countries":[{"iso_2":"de"}]},{"id":"reg_us","currency_code":"usd","countries":[{"iso_2":"us"}]}]}`))
-		case r.URL.Path == "/store/products":
+		case "/store/products":
 			w.Write([]byte(`{"products":[{"id":"prod_1","variants":[{"id":"var_piece","sku":"OVS-PIECE"},{"id":"var_two","sku":"OVS-TWOPACK"}]}]}`))
-		case r.URL.Path == "/store/carts":
-			w.Write([]byte(`{"cart":{"id":"cart_1"}}`))
-		case r.URL.Path == "/store/shipping-options":
+		case "/store/shipping-options":
 			w.Write([]byte(`{"shipping_options":[{"id":"so_1"}]}`))
-		case r.URL.Path == "/store/payment-collections":
+		case "/store/payment-collections":
 			w.Write([]byte(`{"payment_collection":{"id":"pay_col_1"}}`))
-		case r.URL.Path == "/store/carts/cart_1/complete":
+		case "/store/carts/cart_1/complete":
 			w.Write([]byte(`{"type":"order","order":{"id":"order_1"}}`))
 		default:
 			w.Write([]byte(`{"cart":{"id":"cart_1"}}`))
@@ -196,8 +221,8 @@ func TestCheckoutCallOrder(t *testing.T) {
 	for i := range lines {
 		lines[i].VariantID = target.Variants[lines[i].SKU]
 	}
-	res := c.Checkout(ctx, CheckoutInput{RegionID: target.RegionID, Lines: lines, Email: "a@example.com"})
-	if !res.Completed || res.OrderID != "order_1" || res.CartID != "cart_1" {
+	res := c.Checkout(ctx, CartInput{RegionID: target.RegionID, Lines: lines, Email: "a@example.com"})
+	if !res.Completed || res.OrderID != "order_1" || res.CartID != "cart_1" || res.Outcome != history.OK {
 		t.Fatalf("result = %+v", res)
 	}
 
@@ -217,23 +242,29 @@ func TestCheckoutCallOrder(t *testing.T) {
 	if strings.Join(seen, "\n") != strings.Join(want, "\n") {
 		t.Errorf("server saw:\n%s\nwant:\n%s", strings.Join(seen, "\n"), strings.Join(want, "\n"))
 	}
-	calls := rec.Calls()
-	if len(calls) != len(want) {
-		t.Fatalf("recorded %d calls, want %d", len(calls), len(want))
+	ops := rec.Operations()
+	if len(ops) != len(want) {
+		t.Fatalf("recorded %d operations, want %d", len(ops), len(want))
 	}
-	for i, call := range calls {
-		if call.Index != i || call.Method+" "+call.Path != want[i] {
-			t.Errorf("call %d = %d %s %s", i, call.Index, call.Method, call.Path)
+	for i, op := range ops {
+		if op.ID != i+1 || op.Method+" "+op.Path != want[i] || op.Outcome != history.OK {
+			t.Errorf("op %d = %d %s %s %s", i, op.ID, op.Method, op.Path, op.Outcome)
 		}
-		if i > 0 && call.Start.Before(calls[i-1].End.Time) {
-			t.Errorf("call %d started before call %d ended", i, i-1)
+		if i > 0 && op.StartNS < ops[i-1].EndNS {
+			t.Errorf("op %d started before op %d ended", i, i-1)
+		}
+		if i > 0 && (op.ConnReused == nil || !*op.ConnReused) {
+			t.Errorf("op %d did not reuse the connection", i)
 		}
 	}
-	if string(calls[3].RequestBody) != `{"quantity":2,"variant_id":"var_piece"}` {
-		t.Errorf("first line item body = %s", calls[3].RequestBody)
+	if ops[len(ops)-1].Phase != history.PhaseRace {
+		t.Errorf("complete phase = %q", ops[len(ops)-1].Phase)
 	}
-	if string(calls[9].RequestBody) != `{"provider_id":"pp_system_default"}` {
-		t.Errorf("payment session body = %s", calls[9].RequestBody)
+	if string(ops[3].RequestBody) != `{"quantity":2,"variant_id":"var_piece"}` {
+		t.Errorf("first line item body = %s", ops[3].RequestBody)
+	}
+	if string(ops[9].RequestBody) != `{"provider_id":"pp_system_default"}` {
+		t.Errorf("payment session body = %s", ops[9].RequestBody)
 	}
 }
 
@@ -251,12 +282,12 @@ func TestCheckoutStopsAtRejectedComplete(t *testing.T) {
 		}
 	}), time.Second)
 
-	res := c.Checkout(context.Background(), CheckoutInput{RegionID: "reg_us", Lines: []Line{{SKU: "OVS-PIECE", VariantID: "v", Quantity: 1}}})
-	if res.Completed || res.FailedStep != "complete_cart" || !strings.Contains(res.Error, "not enough stock") {
+	res := c.Checkout(context.Background(), CartInput{RegionID: "reg_us", Lines: []Line{{SKU: "OVS-PIECE", VariantID: "v", Quantity: 1}}})
+	if res.Completed || res.Outcome != history.Failed || res.FailedStep != history.StepComplete || !strings.Contains(res.Error, "not enough stock") {
 		t.Errorf("result = %+v", res)
 	}
-	if n := len(rec.Calls()); n != 8 {
-		t.Errorf("recorded %d calls, want 8", n)
+	if n := len(rec.Operations()); n != 8 {
+		t.Errorf("recorded %d operations, want 8", n)
 	}
 }
 

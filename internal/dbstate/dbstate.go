@@ -22,6 +22,9 @@ var Tables = []string{
 	"order_item",
 	"order_line_item",
 	"order_cart",
+	"order_payment_collection",
+	"payment_collection",
+	"cart_line_item",
 	"api_key",
 	"publishable_api_key_sales_channel",
 }
@@ -52,6 +55,12 @@ func (db *DB) readOnly(ctx context.Context, fn func(pgx.Tx) error) error {
 	}
 	defer tx.Rollback(ctx)
 	return fn(tx)
+}
+
+func (db *DB) ServerVersion(ctx context.Context) (string, error) {
+	var v string
+	err := db.conn.QueryRow(ctx, "show server_version").Scan(&v)
+	return v, err
 }
 
 func (db *DB) PublishableKey(ctx context.Context) (string, error) {
@@ -98,6 +107,20 @@ type Reservation struct {
 	CreatedAt       time.Time   `json:"created_at"`
 }
 
+type VariantInventory struct {
+	VariantID        string      `json:"variant_id"`
+	VariantSKU       string      `json:"variant_sku"`
+	InventoryItemID  string      `json:"inventory_item_id"`
+	InventorySKU     string      `json:"inventory_sku"`
+	RequiredQuantity json.Number `json:"required_quantity"`
+}
+
+type PaymentCollection struct {
+	ID     string      `json:"id"`
+	Status string      `json:"status"`
+	Amount json.Number `json:"amount"`
+}
+
 type OrderLine struct {
 	OrderItemID string      `json:"order_item_id"`
 	LineItemID  string      `json:"line_item_id"`
@@ -107,13 +130,14 @@ type OrderLine struct {
 }
 
 type Order struct {
-	ID         string      `json:"id"`
-	DisplayID  int64       `json:"display_id"`
-	Status     string      `json:"status"`
-	Version    int32       `json:"version"`
-	CreatedAt  time.Time   `json:"created_at"`
-	CanceledAt *time.Time  `json:"canceled_at"`
-	Lines      []OrderLine `json:"lines"`
+	ID                 string              `json:"id"`
+	DisplayID          int64               `json:"display_id"`
+	Status             string              `json:"status"`
+	Version            int32               `json:"version"`
+	CreatedAt          time.Time           `json:"created_at"`
+	CanceledAt         *time.Time          `json:"canceled_at"`
+	Lines              []OrderLine         `json:"lines"`
+	PaymentCollections []PaymentCollection `json:"payment_collections"`
 }
 
 type CartOrder struct {
@@ -124,12 +148,13 @@ type CartOrder struct {
 }
 
 type Snapshot struct {
-	TakenAt         time.Time        `json:"taken_at"`
-	VariantSKUs     []string         `json:"variant_skus"`
-	InventoryLevels []InventoryLevel `json:"inventory_levels"`
-	Reservations    []Reservation    `json:"live_reservations"`
-	Orders          []Order          `json:"orders"`
-	CartOrders      []CartOrder      `json:"cart_orders"`
+	TakenAt         time.Time          `json:"taken_at"`
+	VariantSKUs     []string           `json:"variant_skus"`
+	Variants        []VariantInventory `json:"variants"`
+	InventoryLevels []InventoryLevel   `json:"inventory_levels"`
+	Reservations    []Reservation      `json:"live_reservations"`
+	Orders          []Order            `json:"orders"`
+	CartOrders      []CartOrder        `json:"cart_orders"`
 }
 
 func (db *DB) Snapshot(ctx context.Context, variantSKUs []string) (*Snapshot, error) {
@@ -144,6 +169,9 @@ func (db *DB) Snapshot(ctx context.Context, variantSKUs []string) (*Snapshot, er
 		s.TakenAt = s.TakenAt.UTC()
 
 		var err error
+		if s.Variants, err = variants(ctx, tx, variantSKUs); err != nil {
+			return fmt.Errorf("variants: %w", err)
+		}
 		if s.InventoryLevels, err = levels(ctx, tx, variantSKUs); err != nil {
 			return fmt.Errorf("inventory levels: %w", err)
 		}
@@ -169,6 +197,26 @@ const itemsForSKUs = `
 	from product_variant pv
 	join product_variant_inventory_item pvi on pvi.variant_id = pv.id and pvi.deleted_at is null
 	where pv.sku = any($1) and pv.deleted_at is null`
+
+func variants(ctx context.Context, tx pgx.Tx, skus []string) ([]VariantInventory, error) {
+	rows, err := tx.Query(ctx, `
+		select pv.id, pv.sku, pvi.inventory_item_id, coalesce(ii.sku, ''), pvi.required_quantity::text
+		from product_variant pv
+		join product_variant_inventory_item pvi on pvi.variant_id = pv.id and pvi.deleted_at is null
+		join inventory_item ii on ii.id = pvi.inventory_item_id
+		where pv.sku = any($1) and pv.deleted_at is null
+		order by pv.sku, ii.sku`, skus)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (VariantInventory, error) {
+		var v VariantInventory
+		var req string
+		err := r.Scan(&v.VariantID, &v.VariantSKU, &v.InventoryItemID, &v.InventorySKU, &req)
+		v.RequiredQuantity = json.Number(req)
+		return v, err
+	})
+}
 
 func levels(ctx context.Context, tx pgx.Tx, skus []string) ([]InventoryLevel, error) {
 	rows, err := tx.Query(ctx, `
@@ -254,6 +302,25 @@ func orders(ctx context.Context, tx pgx.Tx, skus []string) ([]Order, error) {
 			err := r.Scan(&l.OrderItemID, &l.LineItemID, &l.VariantID, &l.VariantSKU, &qty)
 			l.Quantity = json.Number(qty)
 			return l, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		prows, err := tx.Query(ctx, `
+			select pc.id, pc.status::text, pc.amount::text
+			from order_payment_collection opc
+			join payment_collection pc on pc.id = opc.payment_collection_id
+			where opc.order_id = $1 and opc.deleted_at is null and pc.deleted_at is null
+			order by pc.created_at, pc.id`, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].PaymentCollections, err = pgx.CollectRows(prows, func(r pgx.CollectableRow) (PaymentCollection, error) {
+			var pc PaymentCollection
+			var amount string
+			err := r.Scan(&pc.ID, &pc.Status, &amount)
+			pc.Amount = json.Number(amount)
+			return pc, err
 		})
 		if err != nil {
 			return nil, err
