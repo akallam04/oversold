@@ -1,0 +1,8 @@
+.env
+bin/
+runs/
+*.test
+*.out
+coverage.*
+cover.*
+.DS_Store
