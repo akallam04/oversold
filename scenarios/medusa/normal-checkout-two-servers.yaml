@@ -1,8 +1,9 @@
 schema: oversold.scenario/v1
 name: normal-checkout-two-servers
 description: >
-  Same cart as normal-checkout, built on server 1 and completed on server 2.
-  Both servers share one database.
+  Control. Same cart as normal-checkout, built on server 1 and completed on
+  server 2. Both servers share one database. Medusa's rules expect the same
+  result as normal-checkout: one order and 4 units reserved.
 target:
   engine: medusa
   version: 2.21.2
@@ -25,10 +26,5 @@ race:
 timing:
   release: sequential
 faults: []
-runs: 3
+runs: 30
 seed: 3
-checks:
-  - no_oversell
-  - reserved_matches_reservations
-  - one_order_per_cart
-  - no_orphaned_orders
