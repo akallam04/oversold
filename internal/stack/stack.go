@@ -292,10 +292,11 @@ func (s *Stack) Facts(ctx context.Context, servers int) ([]history.Server, error
 		if id == "" {
 			return nil, fmt.Errorf("%s has no running container", srv.Service)
 		}
-		image, err := s.docker(ctx, "inspect", "--format", "{{.Image}}", id)
+		inspect, err := s.docker(ctx, "inspect", "--format", "{{.Image}} {{.State.StartedAt}}", id)
 		if err != nil {
 			return nil, err
 		}
+		image, startedAt, _ := strings.Cut(inspect, " ")
 		version, err := s.docker(ctx, "exec", id, "node", "-p", `require("@medusajs/medusa/package.json").version`)
 		if err != nil {
 			return nil, err
@@ -306,6 +307,7 @@ func (s *Stack) Facts(ctx context.Context, servers int) ([]history.Server, error
 			URL:           srv.URL,
 			ContainerID:   id,
 			ImageID:       image,
+			StartedAt:     startedAt,
 			MedusaVersion: version,
 		})
 	}

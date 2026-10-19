@@ -15,21 +15,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/akallam04/oversold/internal/checks"
 	"github.com/akallam04/oversold/internal/dbstate"
 	"github.com/akallam04/oversold/internal/envfile"
 	"github.com/akallam04/oversold/internal/history"
 	"github.com/akallam04/oversold/internal/medusa"
+	"github.com/akallam04/oversold/internal/report"
 	"github.com/akallam04/oversold/internal/scenario"
 	"github.com/akallam04/oversold/internal/stack"
 )
 
 const SettleWait = 2 * time.Second
-
-const (
-	ExitOK      = 0
-	ExitUsage   = 2
-	ExitHarness = 3
-)
 
 type Options struct {
 	File    *scenario.File
@@ -48,47 +44,94 @@ func Run(ctx context.Context, opts Options) int {
 		runs = opts.Runs
 	}
 
+	fail := func(err error) int {
+		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
+		return report.ExitInconclusive
+	}
 	host, err := stack.CheckDocker(ctx)
 	if err != nil {
-		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
-		return ExitHarness
+		return fail(err)
 	}
 	fmt.Fprintf(opts.Stdout, "docker endpoint %s\n", host)
 	st, err := stack.New(opts.Dir, opts.Env, sc.Target.Version)
 	if err != nil {
-		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
-		return ExitHarness
+		return fail(err)
 	}
 
 	started := time.Now().UTC()
 	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
-		return ExitHarness
+		return fail(err)
 	}
 	if err := os.WriteFile(filepath.Join(outDir, filepath.Base(opts.File.Path)), opts.File.Bytes, 0o644); err != nil {
-		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
-		return ExitHarness
+		return fail(err)
 	}
-	fmt.Fprintf(opts.Stdout, "scenario %s: %d runs, %d servers, release %s\n", sc.Name, runs, sc.Target.Servers, sc.Timing.Release)
+	selected := sc.SelectedChecks()
+	fmt.Fprintf(opts.Stdout, "scenario %s: %d runs, %d servers, release %s, checks %s\n", sc.Name, runs, sc.Target.Servers, sc.Timing.Release, strings.Join(selected, ", "))
 
-	code := ExitOK
-	for i := 1; i <= runs; i++ {
+	entries, stopped, err := runAll(ctx, runs, func(i int) (report.Entry, error, error) {
 		h, masker, runErr := runOne(ctx, st, opts, runs, i)
-		path := filepath.Join(outDir, fmt.Sprintf("run-%03d.json", i))
-		if err := history.Write(path, h, masker); err != nil {
-			fmt.Fprintf(opts.Stderr, "oversold run: write %s: %v\n", path, err)
-			return ExitHarness
+		var err error
+		if h.Verdicts, err = checks.Evaluate(h, selected); err != nil {
+			return report.Entry{}, nil, err
 		}
-		fmt.Fprintln(opts.Stdout, Summary(h))
+		name := fmt.Sprintf("run-%03d.json", i)
+		path := filepath.Join(outDir, name)
+		if err := history.Write(path, h, masker); err != nil {
+			return report.Entry{}, nil, fmt.Errorf("write %s: %w", path, err)
+		}
+		saved, err := history.Read(path)
+		if err != nil {
+			return report.Entry{}, nil, err
+		}
+		fmt.Fprintln(opts.Stdout, Summary(saved))
 		if runErr != nil {
-			fmt.Fprintf(opts.Stderr, "oversold run: run %d: harness error: %s\n", i, masker.String(runErr.Error()))
-			code = ExitHarness
-			break
+			fmt.Fprintf(opts.Stderr, "oversold run: run %d: harness error: %s\n", i, saved.HarnessError)
+		}
+		return report.Entry{File: name, History: saved}, runErr, nil
+	})
+	if err != nil {
+		return fail(err)
+	}
+
+	rep := report.Build(opts.File, entries, runs, stopped)
+	jsonPath, mdPath, err := rep.Write(outDir)
+	if err != nil {
+		return fail(err)
+	}
+	for _, c := range rep.Checks {
+		fmt.Fprintln(opts.Stdout, rep.CountLine(c))
+	}
+	if stopped != "" {
+		fmt.Fprintln(opts.Stdout, stopped)
+	}
+	fmt.Fprintf(opts.Stdout, "%d runs in %.1fs, exit code %d, report %s\n", len(entries), time.Since(started).Seconds(), rep.ExitCode, jsonPath)
+	fmt.Fprintln(opts.Stdout, mdPath)
+	return rep.ExitCode
+}
+
+func runAll(ctx context.Context, runs int, one func(int) (report.Entry, error, error)) ([]report.Entry, string, error) {
+	var entries []report.Entry
+	inARow := 0
+	for i := 1; i <= runs; i++ {
+		e, harnessErr, err := one(i)
+		if err != nil {
+			return entries, "", err
+		}
+		entries = append(entries, e)
+		if harnessErr == nil {
+			inARow = 0
+			continue
+		}
+		inARow++
+		if ctx.Err() != nil && i < runs {
+			return entries, fmt.Sprintf("interrupted after %d of %d runs", i, runs), nil
+		}
+		if inARow >= report.MaxHarnessErrorsInARow && i < runs {
+			return entries, fmt.Sprintf("stopped after %d harness errors in a row, %d of %d runs recorded", inARow, i, runs), nil
 		}
 	}
-	fmt.Fprintf(opts.Stdout, "%s in %.1fs\n", outDir, time.Since(started).Seconds())
-	return code
+	return entries, "", nil
 }
 
 func runOne(ctx context.Context, st *stack.Stack, opts Options, runs, index int) (*history.History, *history.Masker, error) {
@@ -381,6 +424,13 @@ func Summary(h *history.History) string {
 		if h.Reset.TemplateCreated {
 			b.WriteString(" (template built)")
 		}
+	}
+	if len(h.Verdicts) > 0 {
+		counts := map[history.Result]int{}
+		for _, v := range h.Verdicts {
+			counts[v.Result]++
+		}
+		fmt.Fprintf(&b, " | checks %d pass %d fail %d inconclusive", counts[history.Pass], counts[history.Fail], counts[history.Inconclusive])
 	}
 	if h.HarnessError != "" {
 		fmt.Fprintf(&b, " | harness error")

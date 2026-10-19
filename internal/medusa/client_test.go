@@ -207,10 +207,7 @@ func TestCheckoutCallOrder(t *testing.T) {
 	}), time.Second)
 
 	ctx := context.Background()
-	lines, err := ParseLines("OVS-PIECE:2,OVS-TWOPACK:1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines := []Line{{SKU: "OVS-PIECE", Quantity: 2}, {SKU: "OVS-TWOPACK", Quantity: 1}}
 	target, err := c.FindTarget(ctx, "usd", "us", []string{"OVS-PIECE", "OVS-TWOPACK"})
 	if err != nil {
 		t.Fatal(err)
@@ -221,9 +218,13 @@ func TestCheckoutCallOrder(t *testing.T) {
 	for i := range lines {
 		lines[i].VariantID = target.Variants[lines[i].SKU]
 	}
-	res := c.Checkout(ctx, CartInput{RegionID: target.RegionID, Lines: lines, Email: "a@example.com"})
-	if !res.Completed || res.OrderID != "order_1" || res.CartID != "cart_1" || res.Outcome != history.OK {
-		t.Fatalf("result = %+v", res)
+	cartID, err := c.PrepareCart(ctx, CartInput{RegionID: target.RegionID, Lines: lines, Email: "a@example.com"})
+	if err != nil || cartID != "cart_1" {
+		t.Fatalf("prepare = %q, %v", cartID, err)
+	}
+	done, completeOp, err := c.With(Labels{Phase: history.PhaseRace}).CompleteCart(ctx, cartID)
+	if err != nil || completeOp.Outcome != history.OK || done.Order == nil || done.Order.ID != "order_1" {
+		t.Fatalf("complete = %+v, %+v, %v", done, completeOp, err)
 	}
 
 	want := []string{
@@ -268,7 +269,7 @@ func TestCheckoutCallOrder(t *testing.T) {
 	}
 }
 
-func TestCheckoutStopsAtRejectedComplete(t *testing.T) {
+func TestRejectedCompleteIsFailed(t *testing.T) {
 	c, rec := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/store/shipping-options":
@@ -282,26 +283,16 @@ func TestCheckoutStopsAtRejectedComplete(t *testing.T) {
 		}
 	}), time.Second)
 
-	res := c.Checkout(context.Background(), CartInput{RegionID: "reg_us", Lines: []Line{{SKU: "OVS-PIECE", VariantID: "v", Quantity: 1}}})
-	if res.Completed || res.Outcome != history.Failed || res.FailedStep != history.StepComplete || !strings.Contains(res.Error, "not enough stock") {
-		t.Errorf("result = %+v", res)
-	}
-	if n := len(rec.Operations()); n != 8 {
-		t.Errorf("recorded %d operations, want 8", n)
-	}
-}
-
-func TestParseLines(t *testing.T) {
-	lines, err := ParseLines("OVS-PIECE:4, OVS-TWOPACK:2")
+	ctx := context.Background()
+	cartID, err := c.PrepareCart(ctx, CartInput{RegionID: "reg_us", Lines: []Line{{SKU: "OVS-PIECE", VariantID: "v", Quantity: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 2 || lines[0] != (Line{SKU: "OVS-PIECE", Quantity: 4}) || lines[1] != (Line{SKU: "OVS-TWOPACK", Quantity: 2}) {
-		t.Errorf("lines = %+v", lines)
+	done, op, err := c.CompleteCart(ctx, cartID)
+	if err != nil || op.Outcome != history.Failed || done.Error == nil || done.Error.Message != "not enough stock" {
+		t.Errorf("complete = %+v, %+v, %v", done, op, err)
 	}
-	for _, bad := range []string{"", "OVS-PIECE", "OVS-PIECE:0", "OVS-PIECE:x", ":2", "A:1,A:2"} {
-		if _, err := ParseLines(bad); err == nil {
-			t.Errorf("ParseLines(%q) = nil error", bad)
-		}
+	if n := len(rec.Operations()); n != 8 {
+		t.Errorf("recorded %d operations, want 8", n)
 	}
 }

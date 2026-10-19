@@ -5,10 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
-
-	"github.com/akallam04/oversold/internal/history"
 )
 
 const SystemPaymentProvider = "pp_system_default"
@@ -17,30 +13,6 @@ type Line struct {
 	SKU       string `json:"sku"`
 	VariantID string `json:"variant_id,omitempty"`
 	Quantity  int    `json:"quantity"`
-}
-
-func ParseLines(s string) ([]Line, error) {
-	if strings.TrimSpace(s) == "" {
-		return nil, errors.New("no lines given")
-	}
-	var lines []Line
-	seen := map[string]bool{}
-	for _, part := range strings.Split(s, ",") {
-		sku, qty, ok := strings.Cut(strings.TrimSpace(part), ":")
-		if !ok || sku == "" {
-			return nil, fmt.Errorf("line %q: want SKU:QUANTITY", part)
-		}
-		n, err := strconv.Atoi(qty)
-		if err != nil || n < 1 {
-			return nil, fmt.Errorf("line %q: quantity must be a positive integer", part)
-		}
-		if seen[sku] {
-			return nil, fmt.Errorf("line %q: SKU %s given twice", part, sku)
-		}
-		seen[sku] = true
-		lines = append(lines, Line{SKU: sku, Quantity: n})
-	}
-	return lines, nil
 }
 
 type Target struct {
@@ -145,50 +117,4 @@ func (c *Client) PrepareCart(ctx context.Context, in CartInput) (string, error) 
 		return cart.ID, err
 	}
 	return cart.ID, nil
-}
-
-type CheckoutResult struct {
-	Completed  bool            `json:"completed"`
-	Outcome    history.Outcome `json:"outcome,omitempty"`
-	CartID     string          `json:"cart_id,omitempty"`
-	OrderID    string          `json:"order_id,omitempty"`
-	FailedStep string          `json:"failed_step,omitempty"`
-	Error      string          `json:"error,omitempty"`
-}
-
-func (c *Client) Checkout(ctx context.Context, in CartInput) CheckoutResult {
-	var res CheckoutResult
-	cartID, err := c.PrepareCart(ctx, in)
-	res.CartID = cartID
-	if err != nil {
-		res.FailedStep = stepOf(err)
-		res.Error = err.Error()
-		return res
-	}
-	done, op, err := c.With(Labels{Phase: history.PhaseRace}).CompleteCart(ctx, cartID)
-	res.Outcome = op.Outcome
-	switch {
-	case err != nil:
-		res.FailedStep = history.StepComplete
-		res.Error = err.Error()
-	case op.Outcome == history.OK:
-		res.Completed = true
-		res.OrderID = done.Order.ID
-	default:
-		res.FailedStep = history.StepComplete
-		res.Error = "complete returned type " + strconv.Quote(done.Type)
-		if done.Error != nil {
-			res.Error += ": " + done.Error.Message
-		}
-	}
-	return res
-}
-
-func stepOf(err error) string {
-	var oe *OutcomeError
-	if errors.As(err, &oe) {
-		return oe.Step
-	}
-	step, _, _ := strings.Cut(err.Error(), ":")
-	return step
 }

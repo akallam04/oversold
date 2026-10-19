@@ -10,13 +10,16 @@ var version = "dev"
 
 const usage = `usage: oversold <command>
 
+exit codes: 0 every check passed, 1 a check failed, 2 invalid scenario or bad usage,
+3 nothing failed but a run was inconclusive
+
 commands:
   validate  check a scenario file and print every problem
             oversold validate scenarios/medusa/normal-checkout.yaml
-  run       run a scenario, each run on a fresh database, and write one history per run
+  run       run a scenario, each run on a fresh database, then check every run
             oversold run scenarios/medusa/normal-checkout.yaml [--runs N]
-  checkout  run one checkout against the running Medusa without a reset
-            oversold checkout --lines OVS-PIECE:2,OVS-TWOPACK:1 --label normal
+  check     recompute every verdict and the report from a run folder, no Docker needed
+            oversold check runs/<folder>
   version   print the version
   help      print this help
 `
@@ -35,8 +38,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return validateCmd(args[1:], stdout, stderr)
 	case "run":
 		return runCmd(args[1:], stdout, stderr)
-	case "checkout":
-		return checkoutCmd(args[1:], stdout, stderr)
+	case "check":
+		return checkCmd(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "oversold %s\n", version)
 		return 0

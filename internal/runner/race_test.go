@@ -1,11 +1,17 @@
 package runner
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/akallam04/oversold/internal/history"
+	"github.com/akallam04/oversold/internal/report"
 )
 
 func TestBarrierReleasesEveryAction(t *testing.T) {
@@ -73,5 +79,42 @@ func TestJitterIsSeeded(t *testing.T) {
 		if d != 0 {
 			t.Errorf("zero range gave %v", d)
 		}
+	}
+}
+
+func TestRunAllKeepsGoingAfterHarnessErrors(t *testing.T) {
+	boom := errors.New("boom")
+	tests := []struct {
+		name    string
+		pattern string
+		ran     int
+		stopped string
+	}{
+		{"no errors", "ooooo", 5, ""},
+		{"scattered errors", "xxoxxoxx", 8, ""},
+		{"three in a row", "oxxxoo", 4, "stopped after 3 harness errors in a row, 4 of 6 runs recorded"},
+		{"three in a row at the end", "ooxxx", 5, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var calls []int
+			entries, stopped, err := runAll(context.Background(), len(tt.pattern), func(i int) (report.Entry, error, error) {
+				calls = append(calls, i)
+				e := report.Entry{File: fmt.Sprintf("run-%03d.json", i), History: &history.History{}}
+				if tt.pattern[i-1] == 'x' {
+					return e, boom, nil
+				}
+				return e, nil, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != tt.ran || len(calls) != tt.ran {
+				t.Errorf("ran %d runs, want %d", len(calls), tt.ran)
+			}
+			if stopped != tt.stopped {
+				t.Errorf("stopped = %q, want %q", stopped, tt.stopped)
+			}
+		})
 	}
 }
