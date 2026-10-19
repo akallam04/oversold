@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -79,8 +80,8 @@ func New(dir string, env envfile.Env, version string) (*Stack, error) {
 	if _, err := os.Stat(dir + "/compose.yaml"); err != nil {
 		return nil, fmt.Errorf("compose.yaml not found in %s, run oversold from the repository root", dir)
 	}
-	if got := env.Get("MEDUSA_VERSION", ""); got != version {
-		return nil, fmt.Errorf("scenario targets medusa %s but MEDUSA_VERSION in .env is %q", version, got)
+	if _, err := os.Stat(filepath.Join(dir, "targets", "medusa", "versions", version, "package-lock.json")); err != nil {
+		return nil, fmt.Errorf("no build files for medusa %s under targets/medusa/versions", version)
 	}
 	return &Stack{Dir: dir, Env: env, Version: version}, nil
 }
@@ -122,6 +123,7 @@ func (s *Stack) AppDatabaseURL() string {
 func (s *Stack) docker(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = s.Dir
+	cmd.Env = append(os.Environ(), "MEDUSA_VERSION="+s.Version)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -151,6 +153,7 @@ type ResetResult struct {
 	Start           time.Time
 	Healthy         time.Time
 	TemplateCreated bool
+	ImageBuilt      bool
 }
 
 func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
@@ -166,7 +169,13 @@ func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
 
 	imageID, err := s.ImageID(ctx)
 	if err != nil {
-		return res, fmt.Errorf("medusa image %s not found, run make up first: %w", s.ImageName(), err)
+		if _, err := s.compose(ctx, "build", "medusa-migrate"); err != nil {
+			return res, fmt.Errorf("build medusa image %s: %w", s.ImageName(), err)
+		}
+		res.ImageBuilt = true
+		if imageID, err = s.ImageID(ctx); err != nil {
+			return res, fmt.Errorf("medusa image %s not found after build: %w", s.ImageName(), err)
+		}
 	}
 
 	adminURL := s.DatabaseURL(s.Env.Get("POSTGRES_DB", "oversold"))

@@ -30,6 +30,7 @@ const SettleWait = 2 * time.Second
 type Options struct {
 	File    *scenario.File
 	Runs    int
+	Version string
 	OutRoot string
 	Dir     string
 	Env     envfile.Env
@@ -53,13 +54,17 @@ func Run(ctx context.Context, opts Options) int {
 		return fail(err)
 	}
 	fmt.Fprintf(opts.Stdout, "docker endpoint %s\n", host)
-	st, err := stack.New(opts.Dir, opts.Env, sc.Target.Version)
+	used, err := sc.ResolveVersion(opts.Version)
+	if err != nil {
+		return fail(err)
+	}
+	st, err := stack.New(opts.Dir, opts.Env, used)
 	if err != nil {
 		return fail(err)
 	}
 
 	started := time.Now().UTC()
-	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name)
+	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name+"-"+used)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fail(err)
 	}
@@ -67,7 +72,7 @@ func Run(ctx context.Context, opts Options) int {
 		return fail(err)
 	}
 	selected := sc.SelectedChecks()
-	fmt.Fprintf(opts.Stdout, "scenario %s: %d runs, %d servers, release %s, checks %s\n", sc.Name, runs, sc.Target.Servers, sc.Timing.Release, strings.Join(selected, ", "))
+	fmt.Fprintf(opts.Stdout, "scenario %s: medusa %s (file says %s), %d runs, %d servers, release %s, checks %s\n", sc.Name, used, sc.Target.Version, runs, sc.Target.Servers, sc.Timing.Release, strings.Join(selected, ", "))
 
 	entries, stopped, err := runAll(ctx, runs, func(i int) (report.Entry, error, error) {
 		h, masker, runErr := runOne(ctx, st, opts, runs, i)
@@ -157,6 +162,7 @@ func runOne(ctx context.Context, st *stack.Stack, opts Options, runs, index int)
 		Target: history.Target{
 			Engine:           sc.Target.Engine,
 			ScenarioVersion:  sc.Target.Version,
+			Version:          st.Version,
 			TemplateDatabase: st.TemplateName(),
 		},
 		Start: history.Timestamp{Time: runStart.UTC()},
@@ -179,6 +185,7 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		Start:           history.Timestamp{Time: rr.Start.UTC()},
 		StartNS:         rec.Since(rr.Start),
 		TemplateCreated: rr.TemplateCreated,
+		ImageBuilt:      rr.ImageBuilt,
 	}
 	if err != nil {
 		return fmt.Errorf("reset: %w", err)
@@ -190,8 +197,8 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		return fmt.Errorf("read target facts: %w", err)
 	}
 	for _, s := range h.Target.Servers {
-		if s.MedusaVersion != sc.Target.Version {
-			return fmt.Errorf("%s runs medusa %s, scenario wants %s", s.Service, s.MedusaVersion, sc.Target.Version)
+		if s.MedusaVersion != st.Version {
+			return fmt.Errorf("%s runs medusa %s, this run set uses %s", s.Service, s.MedusaVersion, st.Version)
 		}
 	}
 
@@ -232,8 +239,9 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		return fmt.Errorf("find target: %w", err)
 	}
 
-	for _, name := range sc.CartOrder {
-		cart := sc.Carts[name]
+	plannedCarts, plannedActions := sc.Plan()
+	for _, cart := range plannedCarts {
+		name := cart.Name
 		lines := make([]medusa.Line, len(cart.Lines))
 		for i, l := range cart.Lines {
 			lines[i] = medusa.Line{SKU: l.SKU, VariantID: target.Variants[l.SKU], Quantity: l.Qty}
@@ -257,7 +265,7 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		return err
 	}
 
-	if err := race(ctx, sc, index, key, servers, rec, h); err != nil {
+	if err := race(ctx, sc, plannedActions, index, key, servers, rec, h); err != nil {
 		return fmt.Errorf("race: %w", err)
 	}
 
@@ -317,11 +325,11 @@ type raceAction struct {
 	warmed error
 }
 
-func race(ctx context.Context, sc *scenario.Scenario, index int, key string, servers []stack.Server, rec *history.Recorder, h *history.History) error {
+func race(ctx context.Context, sc *scenario.Scenario, planned []scenario.PlannedAction, index int, key string, servers []stack.Server, rec *history.Recorder, h *history.History) error {
 	lo, hi := sc.JitterRange()
-	jitter := Jitter(*sc.Seed, index, len(sc.Race), lo, hi)
-	acts := make([]*raceAction, len(sc.Race))
-	for i, a := range sc.Race {
+	jitter := Jitter(*sc.Seed, index, len(planned), lo, hi)
+	acts := make([]*raceAction, len(planned))
+	for i, a := range planned {
 		tr := newTransport()
 		c, err := medusa.NewClient(servers[a.Server-1].URL, key, &http.Client{Timeout: sc.RequestTimeout(), Transport: tr}, rec)
 		if err != nil {

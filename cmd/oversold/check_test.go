@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -143,4 +144,88 @@ func TestCheckRejectsChangedScenario(t *testing.T) {
 	if code := run([]string{"check", dir}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "does not match") {
 		t.Errorf("exit code %d, stderr %s", code, stderr.String())
 	}
+}
+
+func TestExportRoundTrip(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		code int
+	}{{"normal-checkout", 0}, {"single-cart-over-demand", 1}} {
+		t.Run(tt.name, func(t *testing.T) {
+			src := copyRunFolder(t, tt.name)
+			var stdout, stderr bytes.Buffer
+			if code := run([]string{"check", src}, &stdout, &stderr); code != tt.code {
+				t.Fatalf("check source = %d\n%s", code, stderr.String())
+			}
+			srcReport, _ := os.ReadFile(filepath.Join(src, "report.json"))
+
+			dst := filepath.Join(t.TempDir(), "export")
+			if code := run([]string{"export", src, dst}, &stdout, &stderr); code != 0 {
+				t.Fatalf("export = %d\n%s", code, stderr.String())
+			}
+			entries, _ := os.ReadDir(dst)
+			var names []string
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			want := []string{tt.name + ".yaml", "report.json", "report.md", "run-001.json.gz"}
+			sort.Strings(want)
+			if strings.Join(names, ",") != strings.Join(want, ",") {
+				t.Errorf("export holds %q, want %q", names, want)
+			}
+			md, _ := os.ReadFile(filepath.Join(dst, "report.md"))
+			if !strings.Contains(string(md), "[run-001.json.gz](run-001.json.gz)") {
+				t.Errorf("exported report.md does not link the gzipped history:\n%s", md)
+			}
+
+			stdout.Reset()
+			if code := run([]string{"check", dst}, &stdout, &stderr); code != tt.code {
+				t.Fatalf("check export = %d, want %d\n%s", code, tt.code, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "stored verdicts matched in 0 of 0") {
+				t.Logf("check output:\n%s", stdout.String())
+			}
+			dstReport, _ := os.ReadFile(filepath.Join(dst, "report.json"))
+			if !sameVerdicts(t, srcReport, dstReport) {
+				t.Error("check on the export gave different verdicts than on the source")
+			}
+
+			if code := run([]string{"export", src, dst}, &stdout, &stderr); code != 2 {
+				t.Errorf("export into a non-empty folder = %d, want 2", code)
+			}
+		})
+	}
+}
+
+func TestCheckRefusesPlainAndGzipTwins(t *testing.T) {
+	dir := copyRunFolder(t, "normal-checkout")
+	b, _ := os.ReadFile(filepath.Join(dir, "run-001.json"))
+	os.WriteFile(filepath.Join(dir, "run-001.json.gz"), b, 0o644)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", dir}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "both run-001.json and run-001.json.gz") {
+		t.Errorf("exit %d, stderr %s", code, stderr.String())
+	}
+}
+
+func sameVerdicts(t *testing.T, a, b []byte) bool {
+	t.Helper()
+	type run struct {
+		Index    int `json:"index"`
+		Verdicts []struct {
+			Check  string `json:"check"`
+			Result string `json:"result"`
+			Reason string `json:"reason"`
+		} `json:"verdicts"`
+	}
+	var ra, rb struct {
+		ExitCode int               `json:"exit_code"`
+		Checks   []json.RawMessage `json:"checks"`
+		Runs     []run             `json:"runs"`
+	}
+	if json.Unmarshal(a, &ra) != nil || json.Unmarshal(b, &rb) != nil {
+		return false
+	}
+	ja, _ := json.Marshal([]any{ra.ExitCode, ra.Checks, ra.Runs})
+	jb, _ := json.Marshal([]any{rb.ExitCode, rb.Checks, rb.Runs})
+	return bytes.Equal(ja, jb)
 }

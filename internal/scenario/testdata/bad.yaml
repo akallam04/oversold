@@ -3,7 +3,7 @@ name: Bad_Name
 description: Has one of each problem.
 target:
   engine: medusa
-  version: 2.19.0
+  version: 2.18.0
   servers: 1
   colour: blue
 stock:

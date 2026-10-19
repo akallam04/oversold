@@ -1,13 +1,17 @@
 package history
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,6 +217,7 @@ type Server struct {
 type Target struct {
 	Engine           string   `json:"engine"`
 	ScenarioVersion  string   `json:"scenario_version"`
+	Version          string   `json:"version"`
 	Servers          []Server `json:"servers"`
 	PostgresVersion  string   `json:"postgres_version"`
 	TemplateDatabase string   `json:"template_database"`
@@ -224,6 +229,7 @@ type Reset struct {
 	StartNS         int64     `json:"start_ns"`
 	HealthyNS       int64     `json:"healthy_ns"`
 	TemplateCreated bool      `json:"template_created"`
+	ImageBuilt      bool      `json:"image_built"`
 }
 
 type RaceAction struct {
@@ -288,6 +294,18 @@ func Read(path string) (*History, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+	if strings.HasSuffix(path, ".gz") {
+		zr, err := gzip.NewReader(bytes.NewReader(b))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if b, err = io.ReadAll(zr); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if err := zr.Close(); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 	}
 	h := &History{}
 	if err := json.Unmarshal(b, h); err != nil {

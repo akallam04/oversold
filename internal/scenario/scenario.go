@@ -30,6 +30,8 @@ const (
 	MinRuns                 = 1
 	MaxRuns                 = 1000
 	MaxLineQty              = 1000
+	MaxCartCount            = 100
+	MaxRaceActions          = 200
 	MaxStock                = 1000000
 )
 
@@ -50,7 +52,7 @@ var InventorySKUs = []string{"WIDGET", "SOLO"}
 var SeededStock = map[string]int{"WIDGET": 10, "SOLO": 1}
 
 var Engines = map[string][]string{
-	"medusa": {"2.21.2"},
+	"medusa": {"2.19.0", "2.21.2"},
 }
 
 var Checks = []string{
@@ -105,7 +107,65 @@ type Target struct {
 
 type Cart struct {
 	Server int    `yaml:"server"`
+	Count  *int   `yaml:"count"`
 	Lines  []Line `yaml:"lines"`
+}
+
+func (c Cart) Copies() int {
+	if c.Count == nil {
+		return 1
+	}
+	return *c.Count
+}
+
+type PlannedCart struct {
+	Name   string
+	Base   string
+	Server int
+	Lines  []Line
+}
+
+type PlannedAction struct {
+	ID     string
+	Base   string
+	Server int
+	Do     string
+	Cart   string
+}
+
+func copyNames(base string, n int) []string {
+	if n <= 1 {
+		return []string{base}
+	}
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("%s-%d", base, i+1)
+	}
+	return out
+}
+
+func (s *Scenario) Plan() ([]PlannedCart, []PlannedAction) {
+	var carts []PlannedCart
+	for _, name := range s.CartOrder {
+		c := s.Carts[name]
+		for _, n := range copyNames(name, c.Copies()) {
+			carts = append(carts, PlannedCart{Name: n, Base: name, Server: c.Server, Lines: c.Lines})
+		}
+	}
+	var actions []PlannedAction
+	for _, a := range s.Race {
+		c, ok := s.Carts[a.Cart]
+		if !ok {
+			continue
+		}
+		n := c.Copies()
+		ids := copyNames(a.ID, n)
+		names := copyNames(a.Cart, n)
+		for i := range ids {
+			actions = append(actions, PlannedAction{ID: ids[i], Base: a.ID, Server: a.Server, Do: a.Do, Cart: names[i]})
+		}
+	}
+	return carts, actions
 }
 
 type Line struct {
@@ -124,6 +184,17 @@ type Timing struct {
 	Release          string `yaml:"release"`
 	JitterMS         []int  `yaml:"jitter_ms"`
 	RequestTimeoutMS *int   `yaml:"request_timeout_ms"`
+}
+
+func (s *Scenario) ResolveVersion(override string) (string, error) {
+	if override == "" {
+		return s.Target.Version, nil
+	}
+	versions := Engines[s.Target.Engine]
+	if !slices.Contains(versions, override) {
+		return "", fmt.Errorf("--version %s: %s versions Oversold builds are %s", override, s.Target.Engine, strings.Join(versions, ", "))
+	}
+	return override, nil
 }
 
 func (s *Scenario) SelectedChecks() []string {
@@ -298,6 +369,9 @@ func (s *Scenario) validate() []string {
 		if c.Server < 1 || (servers >= 1 && c.Server > servers) {
 			add("carts.%s.server: got %d, want 1 to %d", name, c.Server, max(servers, 1))
 		}
+		if c.Count != nil && (*c.Count < 1 || *c.Count > MaxCartCount) {
+			add("carts.%s.count: got %d, want 1 to %d", name, *c.Count, MaxCartCount)
+		}
 		if len(c.Lines) == 0 {
 			add("carts.%s.lines: at least one line is required", name)
 		}
@@ -341,6 +415,10 @@ func (s *Scenario) validate() []string {
 		} else if _, ok := s.Carts[a.Cart]; !ok {
 			add("race[%d].cart: no cart named %q", i, a.Cart)
 		}
+	}
+
+	for _, x := range s.planProblems() {
+		add("%s", x)
 	}
 
 	switch s.Timing.Release {
@@ -402,4 +480,32 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func (s *Scenario) planProblems() []string {
+	var p []string
+	for _, c := range s.Carts {
+		if c.Count != nil && (*c.Count < 1 || *c.Count > MaxCartCount) {
+			return nil
+		}
+	}
+	carts, actions := s.Plan()
+	seen := map[string]string{}
+	for _, c := range carts {
+		if other, dup := seen[c.Name]; dup && other != c.Base {
+			p = append(p, fmt.Sprintf("carts.%s: copy %s has the same name as a copy of cart %s", c.Base, c.Name, other))
+		}
+		seen[c.Name] = c.Base
+	}
+	seenAction := map[string]string{}
+	for _, a := range actions {
+		if other, dup := seenAction[a.ID]; dup && other != a.Base {
+			p = append(p, fmt.Sprintf("race: action %s from %s has the same id as an action from %s", a.ID, a.Base, other))
+		}
+		seenAction[a.ID] = a.Base
+	}
+	if len(actions) > MaxRaceActions {
+		p = append(p, fmt.Sprintf("race: %d actions after expanding cart counts, at most %d", len(actions), MaxRaceActions))
+	}
+	return p
 }

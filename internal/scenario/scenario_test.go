@@ -49,7 +49,7 @@ func TestBadFileReportsEveryProblem(t *testing.T) {
 		"field colour not found",
 		`schema: got "oversold.scenario/v2"`,
 		"name: \"Bad_Name\" must be kebab-case",
-		"target.version: medusa 2.19.0 is not a version",
+		"target.version: medusa 2.18.0 is not a version",
 		"stock.GADGET: unknown inventory SKU",
 		`carts.main.lines[0].sku: unknown SKU "OVS-NOPE"`,
 		"race[0].server: got 2, want 1 to 1",
@@ -224,5 +224,119 @@ func TestSeededStockMatchesSeedScript(t *testing.T) {
 		if !strings.Contains(src, want) {
 			t.Errorf("seed.ts does not stock %s with %d", sku, qty)
 		}
+	}
+}
+
+func countScenario(extraCarts, race string) string {
+	return `schema: oversold.scenario/v1
+name: counted
+description: Counted carts.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 2
+carts:
+  buyer:
+    server: 2
+    count: 3
+    lines:
+      - sku: OVS-PIECE
+        qty: 1
+  solo:
+    server: 1
+    lines:
+      - sku: OVS-SOLO
+        qty: 1
+` + extraCarts + `race:
+` + race + `timing:
+  release: together
+runs: 1
+seed: 1
+`
+}
+
+const countRace = `  - id: buy
+    server: 1
+    do: complete
+    cart: buyer
+  - id: last
+    server: 1
+    do: complete
+    cart: solo
+`
+
+func TestCountExpansion(t *testing.T) {
+	s, problems := Parse([]byte(countScenario("", countRace)))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %q", problems)
+	}
+	carts, actions := s.Plan()
+	var names []string
+	for _, c := range carts {
+		names = append(names, c.Name)
+		if c.Base == "buyer" && (c.Server != 2 || len(c.Lines) != 1 || c.Lines[0].SKU != "OVS-PIECE") {
+			t.Errorf("copy %s = %+v", c.Name, c)
+		}
+	}
+	if !slices.Equal(names, []string{"buyer-1", "buyer-2", "buyer-3", "solo"}) {
+		t.Errorf("carts = %q", names)
+	}
+	var got []string
+	for _, a := range actions {
+		got = append(got, a.ID+"->"+a.Cart)
+		if a.Server != 1 || a.Do != "complete" {
+			t.Errorf("action %+v", a)
+		}
+	}
+	if !slices.Equal(got, []string{"buy-1->buyer-1", "buy-2->buyer-2", "buy-3->buyer-3", "last->solo"}) {
+		t.Errorf("actions = %q", got)
+	}
+}
+
+func TestCountOneKeepsName(t *testing.T) {
+	src := strings.Replace(countScenario("", countRace), "count: 3", "count: 1", 1)
+	s, problems := Parse([]byte(src))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %q", problems)
+	}
+	carts, actions := s.Plan()
+	if carts[0].Name != "buyer" || actions[0].ID != "buy" || actions[0].Cart != "buyer" {
+		t.Errorf("carts %+v actions %+v", carts, actions)
+	}
+}
+
+func TestCountValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"zero", strings.Replace(countScenario("", countRace), "count: 3", "count: 0", 1), "carts.buyer.count: got 0, want 1 to 100"},
+		{"too many", strings.Replace(countScenario("", countRace), "count: 3", "count: 101", 1), "carts.buyer.count: got 101, want 1 to 100"},
+		{"not a number", strings.Replace(countScenario("", countRace), "count: 3", "count: lots", 1), "cannot unmarshal"},
+		{"cart name collision", countScenario("  buyer-2:\n    server: 1\n    lines:\n      - sku: OVS-PIECE\n        qty: 1\n", countRace), "copy buyer-2 has the same name as a copy of cart"},
+		{"action id collision", countScenario("", countRace+"  - id: buy-2\n    server: 1\n    do: complete\n    cart: solo\n"), "action buy-2 from"},
+		{"too many actions", strings.Replace(countScenario("", countRace+"  - id: again\n    server: 2\n    do: complete\n    cart: buyer\n  - id: third\n    server: 1\n    do: complete\n    cart: buyer\n"), "count: 3", "count: 100", 1), "race: 301 actions after expanding cart counts, at most 200"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, problems := Parse([]byte(tt.src))
+			if joined := strings.Join(problems, "\n"); !strings.Contains(joined, tt.want) {
+				t.Errorf("want %q in:\n%s", tt.want, joined)
+			}
+		})
+	}
+}
+
+func TestResolveVersion(t *testing.T) {
+	s, _ := Parse([]byte(minimal("")))
+	if v, err := s.ResolveVersion(""); err != nil || v != "2.21.2" {
+		t.Errorf("no override = %q, %v", v, err)
+	}
+	if v, err := s.ResolveVersion("2.19.0"); err != nil || v != "2.19.0" {
+		t.Errorf("override = %q, %v", v, err)
+	}
+	if _, err := s.ResolveVersion("2.18.0"); err == nil {
+		t.Error("unbuilt version should be refused")
 	}
 }

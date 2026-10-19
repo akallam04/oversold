@@ -1,10 +1,14 @@
 package report
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,9 +30,10 @@ const (
 )
 
 type ScenarioRef struct {
-	Name   string `json:"name"`
-	File   string `json:"file"`
-	SHA256 string `json:"sha256"`
+	Name    string `json:"name"`
+	File    string `json:"file"`
+	SHA256  string `json:"sha256"`
+	Version string `json:"version"`
 }
 
 type Server struct {
@@ -66,6 +71,7 @@ type Report struct {
 	Scenario        ScenarioRef       `json:"scenario"`
 	Oversold        []history.Build   `json:"oversold"`
 	CheckedBy       history.Build     `json:"checked_by"`
+	VersionsUsed    []string          `json:"versions_used"`
 	Servers         []Server          `json:"servers"`
 	PostgresVersion string            `json:"postgres_version"`
 	RunsPlanned     int               `json:"runs_planned"`
@@ -86,7 +92,7 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 	sc := file.Scenario
 	r := &Report{
 		Schema:       Schema,
-		Scenario:     ScenarioRef{Name: sc.Name, File: filepath.Base(file.Path), SHA256: file.SHA256},
+		Scenario:     ScenarioRef{Name: sc.Name, File: filepath.Base(file.Path), SHA256: file.SHA256, Version: sc.Target.Version},
 		CheckedBy:    history.CurrentBuild(),
 		RunsPlanned:  planned,
 		RunsRecorded: len(entries),
@@ -117,6 +123,13 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 		}
 		if r.PostgresVersion == "" {
 			r.PostgresVersion = h.Target.PostgresVersion
+		}
+		used := h.Target.Version
+		if used == "" {
+			used = h.Target.ScenarioVersion
+		}
+		if used != "" && !slices.Contains(r.VersionsUsed, used) {
+			r.VersionsUsed = append(r.VersionsUsed, used)
 		}
 
 		run := Run{Index: h.Run.Index, File: e.File, Result: checks.Summarize(h.Verdicts), HarnessError: h.HarnessError}
@@ -183,6 +196,7 @@ func (r *Report) Markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", r.Scenario.Name)
 	fmt.Fprintf(&b, "- Scenario file: `%s`, sha256 `%s`\n", r.Scenario.File, r.Scenario.SHA256)
+	fmt.Fprintf(&b, "- Medusa version in the file: %s. Version used: %s\n", r.Scenario.Version, strings.Join(r.VersionsUsed, ", "))
 	for _, o := range r.Oversold {
 		state := "clean"
 		if o.Dirty {
@@ -290,14 +304,10 @@ func LoadFolder(dir string) (*scenario.File, []Entry, []string, error) {
 	if len(problems) > 0 {
 		return file, nil, problems, nil
 	}
-	paths, err := filepath.Glob(filepath.Join(dir, "run-*.json"))
+	paths, err := historyPaths(dir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if len(paths) == 0 {
-		return nil, nil, nil, fmt.Errorf("%s: no run-*.json histories", dir)
-	}
-	sort.Strings(paths)
 	var entries []Entry
 	for _, p := range paths {
 		h, err := history.Read(p)
@@ -310,4 +320,117 @@ func LoadFolder(dir string) (*scenario.File, []Entry, []string, error) {
 		entries = append(entries, Entry{File: filepath.Base(p), History: h})
 	}
 	return file, entries, nil, nil
+}
+
+func historyPaths(dir string) ([]string, error) {
+	plain, err := filepath.Glob(filepath.Join(dir, "run-*.json"))
+	if err != nil {
+		return nil, err
+	}
+	zipped, err := filepath.Glob(filepath.Join(dir, "run-*.json.gz"))
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, p := range plain {
+		seen[p] = true
+	}
+	for _, p := range zipped {
+		if seen[strings.TrimSuffix(p, ".gz")] {
+			return nil, fmt.Errorf("%s: both %s and %s exist", dir, filepath.Base(strings.TrimSuffix(p, ".gz")), filepath.Base(p))
+		}
+	}
+	paths := append(plain, zipped...)
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("%s: no run-*.json or run-*.json.gz histories", dir)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func Export(src, dst string) ([]string, error) {
+	file, entries, problems, err := LoadFolder(src)
+	if err != nil {
+		return nil, err
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("%s: invalid scenario: %s", file.Path, strings.Join(problems, "; "))
+	}
+	b, err := os.ReadFile(filepath.Join(src, "report.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read report: %w", err)
+	}
+	var rep Report
+	if err := json.Unmarshal(b, &rep); err != nil {
+		return nil, fmt.Errorf("read report: %w", err)
+	}
+	if rep.Scenario.SHA256 != file.SHA256 {
+		return nil, fmt.Errorf("report.json is for scenario sha256 %s, folder has %s", rep.Scenario.SHA256, file.SHA256)
+	}
+
+	if existing, err := os.ReadDir(dst); err == nil && len(existing) > 0 {
+		return nil, fmt.Errorf("%s exists and is not empty", dst)
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return nil, err
+	}
+
+	var written []string
+	scenarioName := filepath.Base(file.Path)
+	if err := os.WriteFile(filepath.Join(dst, scenarioName), file.Bytes, 0o644); err != nil {
+		return nil, err
+	}
+	written = append(written, scenarioName)
+
+	renamed := map[string]string{}
+	for _, e := range entries {
+		raw, err := rawHistory(filepath.Join(src, e.File))
+		if err != nil {
+			return nil, err
+		}
+		name := strings.TrimSuffix(e.File, ".gz") + ".gz"
+		if err := writeGzip(filepath.Join(dst, name), raw); err != nil {
+			return nil, err
+		}
+		renamed[e.File] = name
+		written = append(written, name)
+	}
+	for i := range rep.Runs {
+		if n, ok := renamed[rep.Runs[i].File]; ok {
+			rep.Runs[i].File = n
+		}
+	}
+	if _, _, err := rep.Write(dst); err != nil {
+		return nil, err
+	}
+	written = append(written, "report.json", "report.md")
+	return written, nil
+}
+
+func rawHistory(path string) ([]byte, error) {
+	b, err := os.ReadFile(path)
+	if err != nil || !strings.HasSuffix(path, ".gz") {
+		return b, err
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	return io.ReadAll(zr)
+}
+
+func writeGzip(path string, data []byte) error {
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
+	if _, err := zw.Write(data); err != nil {
+		return err
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }

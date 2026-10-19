@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	"github.com/akallam04/oversold/internal/checks"
@@ -31,8 +32,9 @@ func validateCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	s := f.Scenario
-	fmt.Fprintf(stdout, "%s: valid, scenario %s, %s %s on %d servers, %d carts, %d race actions, %d runs\n",
-		args[0], s.Name, s.Target.Engine, s.Target.Version, s.Target.Servers, len(s.Carts), len(s.Race), s.Runs)
+	carts, actions := s.Plan()
+	fmt.Fprintf(stdout, "%s: valid, scenario %s, %s %s on %d servers, %d carts, %d race actions, %d runs, checks %s\n",
+		args[0], s.Name, s.Target.Engine, s.Target.Version, s.Target.Servers, len(carts), len(actions), s.Runs, strings.Join(s.SelectedChecks(), ", "))
 	return 0
 }
 
@@ -41,6 +43,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	runs := fs.Int("runs", 0, "number of runs, overrides the scenario")
 	outRoot := fs.String("out", "runs", "directory for run folders")
+	version := fs.String("version", "", "medusa version to run, overrides target.version in the file")
 
 	var file string
 	rest := args
@@ -61,7 +64,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if file == "" {
-		fmt.Fprintln(stderr, "usage: oversold run <scenario.yaml> [--runs N]")
+		fmt.Fprintln(stderr, "usage: oversold run <scenario.yaml> [--runs N] [--version X]")
 		return 2
 	}
 	if *runs != 0 && (*runs < scenario.MinRuns || *runs > scenario.MaxRuns) {
@@ -77,6 +80,11 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	if _, err := f.Scenario.ResolveVersion(*version); err != nil {
+		fmt.Fprintf(stderr, "oversold run: %v\n", err)
+		return report.ExitUsage
+	}
+
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(stderr, "oversold run: %v\n", err)
@@ -87,6 +95,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	return runner.Run(ctx, runner.Options{
 		File:    f,
 		Runs:    *runs,
+		Version: *version,
 		OutRoot: *outRoot,
 		Dir:     dir,
 		Env:     envfile.Load(".env"),
@@ -154,4 +163,20 @@ func checkCmd(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%d runs, exit code %d, report %s\n", len(entries), rep.ExitCode, jsonPath)
 	fmt.Fprintln(stdout, mdPath)
 	return rep.ExitCode
+}
+
+func exportCmd(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 2 || strings.HasPrefix(args[0], "-") || strings.HasPrefix(args[1], "-") {
+		fmt.Fprintln(stderr, "usage: oversold export <run folder> <dest>")
+		return report.ExitUsage
+	}
+	written, err := report.Export(args[0], args[1])
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold export: %v\n", err)
+		return report.ExitUsage
+	}
+	for _, name := range written {
+		fmt.Fprintln(stdout, filepath.Join(args[1], name))
+	}
+	return 0
 }

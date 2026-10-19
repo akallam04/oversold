@@ -17,9 +17,11 @@ commands:
   validate  check a scenario file and print every problem
             oversold validate scenarios/medusa/normal-checkout.yaml
   run       run a scenario, each run on a fresh database, then check every run
-            oversold run scenarios/medusa/normal-checkout.yaml [--runs N]
+            oversold run scenarios/medusa/normal-checkout.yaml [--runs N] [--version X]
   check     recompute every verdict and the report from a run folder, no Docker needed
             oversold check runs/<folder>
+  export    copy a run folder's scenario, report and gzipped histories to dest
+            oversold export runs/<folder> <dest>
   version   print the version
   help      print this help
 `
@@ -40,6 +42,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runCmd(args[1:], stdout, stderr)
 	case "check":
 		return checkCmd(args[1:], stdout, stderr)
+	case "export":
+		return exportCmd(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "oversold %s\n", version)
 		return 0

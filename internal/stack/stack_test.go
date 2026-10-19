@@ -1,6 +1,11 @@
 package stack
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/akallam04/oversold/internal/envfile"
+)
 
 func TestLocalEndpoint(t *testing.T) {
 	tests := []struct {
@@ -31,5 +36,26 @@ func TestTemplateName(t *testing.T) {
 	s := &Stack{Version: "2.21.2"}
 	if got := s.TemplateName(); got != "medusa_template_2_21_2" {
 		t.Errorf("template name = %q", got)
+	}
+}
+
+func TestNewPicksImageAndTemplateFromVersion(t *testing.T) {
+	for _, v := range []string{"2.19.0", "2.21.2"} {
+		s, err := New("../..", envfile.Env{"MEDUSA_VERSION": "2.21.2"}, v)
+		if err != nil {
+			t.Fatalf("New(%s): %v", v, err)
+		}
+		if s.ImageName() != "oversold-medusa:"+v {
+			t.Errorf("image = %s", s.ImageName())
+		}
+		if s.TemplateName() != "medusa_template_"+strings.ReplaceAll(v, ".", "_") {
+			t.Errorf("template = %s", s.TemplateName())
+		}
+	}
+	if _, err := New("../..", envfile.Env{}, "2.18.0"); err == nil {
+		t.Error("a version without build files should be refused")
+	}
+	if _, err := New("../..", envfile.Env{}, "2.21.2; drop"); err == nil {
+		t.Error("a malformed version should be refused")
 	}
 }

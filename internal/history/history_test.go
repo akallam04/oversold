@@ -1,6 +1,8 @@
 package history
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -146,5 +148,36 @@ func TestSnapshotHasNoSecretFields(t *testing.T) {
 	walk(reflect.TypeOf(dbstate.Snapshot{}), "snapshot")
 	if len(seen) < 5 {
 		t.Errorf("walked only %d struct types", len(seen))
+	}
+}
+
+func TestReadGzippedHistory(t *testing.T) {
+	src := filepath.Join("..", "checks", "testdata", "runs", "normal-checkout", "run-001.json")
+	plain, err := Read(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(src)
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write(raw)
+	zw.Close()
+	path := filepath.Join(t.TempDir(), "run-001.json.gz")
+	os.WriteFile(path, buf.Bytes(), 0o644)
+
+	zipped, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(plain)
+	b, _ := json.Marshal(zipped)
+	if !bytes.Equal(a, b) {
+		t.Error("gzipped history decodes differently from the plain one")
+	}
+
+	bad := filepath.Join(t.TempDir(), "run-002.json.gz")
+	os.WriteFile(bad, raw, 0o644)
+	if _, err := Read(bad); err == nil {
+		t.Error("a .gz file that is not gzip should be an error")
 	}
 }
