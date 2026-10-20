@@ -1,0 +1,1000 @@
+{
+  "schema": "oversold.report/v1",
+  "scenario": {
+    "name": "many-carts-last-units",
+    "file": "many-carts-last-units.yaml",
+    "sha256": "e9c5ea6bc4f4225dada63a1245460936a5a26d93b7c8fa99ade435fc19d05e3e",
+    "version": "2.21.2"
+  },
+  "oversold": [
+    {
+      "commit": "ce1011c42d32c3643a69c3c2b91e9b20fd5c550b",
+      "dirty": false
+    }
+  ],
+  "checked_by": {
+    "commit": "ce1011c42d32c3643a69c3c2b91e9b20fd5c550b",
+    "dirty": false
+  },
+  "versions_used": [
+    "2.19.0"
+  ],
+  "servers": [
+    {
+      "service": "medusa",
+      "medusa_version": "2.19.0",
+      "image_id": "sha256:24f515d6ce8af95d6edacd2c62229186651dbce21aede31ea271921a3c7b8c0d"
+    }
+  ],
+  "postgres_version": "15.19",
+  "runs_planned": 30,
+  "runs_recorded": 30,
+  "checks": [
+    {
+      "check": "no_oversell",
+      "version": 1,
+      "runs": 30,
+      "fail": 0,
+      "pass": 30,
+      "inconclusive": 0
+    },
+    {
+      "check": "reserved_matches_reservations",
+      "version": 1,
+      "runs": 30,
+      "fail": 0,
+      "pass": 30,
+      "inconclusive": 0
+    },
+    {
+      "check": "one_order_per_cart",
+      "version": 1,
+      "runs": 30,
+      "fail": 0,
+      "pass": 30,
+      "inconclusive": 0
+    },
+    {
+      "check": "no_orphaned_orders",
+      "version": 1,
+      "runs": 30,
+      "fail": 0,
+      "pass": 30,
+      "inconclusive": 0
+    }
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "file": "run-001.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 1 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 1 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "file": "run-002.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 1 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 1 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "file": "run-003.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 1 order; cart buyer-36: 0 order; cart buyer-37: 1 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "file": "run-004.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 1 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 1 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "file": "run-005.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 1 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 1 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "file": "run-006.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 1 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 1 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "file": "run-007.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 1 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 1 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "file": "run-008.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 1 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 1 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "file": "run-009.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 1 order; cart buyer-32: 0 order; cart buyer-33: 1 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "file": "run-010.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 1 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 1 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "file": "run-011.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 1 order; cart buyer-8: 0 order; cart buyer-9: 1 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "file": "run-012.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 1 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 1 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "file": "run-013.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 1 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 1 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "file": "run-014.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 1 order; cart buyer-44: 1 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "file": "run-015.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 1 order; cart buyer-17: 1 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "file": "run-016.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 1 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 1 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "file": "run-017.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 1 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 1 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "file": "run-018.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 1 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 1 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "file": "run-019.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 1 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 1 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "file": "run-020.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 1 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 1 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "file": "run-021.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 1 order; cart buyer-44: 1 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "file": "run-022.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 1 order; cart buyer-29: 0 order; cart buyer-3: 1 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "file": "run-023.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 1 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 1 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "file": "run-024.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 1 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 1 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "file": "run-025.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 1 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 1 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "file": "run-026.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 1 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 1 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "file": "run-027.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 1 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 1 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "file": "run-028.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 1 order; cart buyer-29: 0 order; cart buyer-3: 1 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "file": "run-029.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 0 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 1 order; cart buyer-22: 0 order; cart buyer-23: 0 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 1 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "file": "run-030.json.gz",
+      "result": "pass",
+      "verdicts": [
+        {
+          "check": "no_oversell",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO live 2 of 2 stocked; WIDGET live 0 of 10 stocked; SOLO orders need 2 of 2"
+        },
+        {
+          "check": "reserved_matches_reservations",
+          "version": 1,
+          "result": "pass",
+          "reason": "SOLO reserved 2 = live 2; WIDGET reserved 0 = live 0"
+        },
+        {
+          "check": "one_order_per_cart",
+          "version": 1,
+          "result": "pass",
+          "reason": "cart buyer-1: 0 order; cart buyer-10: 0 order; cart buyer-11: 0 order; cart buyer-12: 0 order; cart buyer-13: 0 order; cart buyer-14: 0 order; cart buyer-15: 1 order; cart buyer-16: 0 order; cart buyer-17: 0 order; cart buyer-18: 0 order; cart buyer-19: 0 order; cart buyer-2: 0 order; cart buyer-20: 0 order; cart buyer-21: 0 order; cart buyer-22: 0 order; cart buyer-23: 1 order; cart buyer-24: 0 order; cart buyer-25: 0 order; cart buyer-26: 0 order; cart buyer-27: 0 order; cart buyer-28: 0 order; cart buyer-29: 0 order; cart buyer-3: 0 order; cart buyer-30: 0 order; cart buyer-31: 0 order; cart buyer-32: 0 order; cart buyer-33: 0 order; cart buyer-34: 0 order; cart buyer-35: 0 order; cart buyer-36: 0 order; cart buyer-37: 0 order; cart buyer-38: 0 order; cart buyer-39: 0 order; cart buyer-4: 0 order; cart buyer-40: 0 order; cart buyer-41: 0 order; cart buyer-42: 0 order; cart buyer-43: 0 order; cart buyer-44: 0 order; cart buyer-45: 0 order; cart buyer-46: 0 order; cart buyer-47: 0 order; cart buyer-48: 0 order; cart buyer-49: 0 order; cart buyer-5: 0 order; cart buyer-50: 0 order; cart buyer-6: 0 order; cart buyer-7: 0 order; cart buyer-8: 0 order; cart buyer-9: 0 order"
+        },
+        {
+          "check": "no_orphaned_orders",
+          "version": 1,
+          "result": "pass",
+          "reason": "2 orders, each linked to a scenario cart and holding the reservations its lines need"
+        }
+      ]
+    }
+  ],
+  "exit_code": 0,
+  "generated": "2026-10-20T03:48:06.553666000Z"
+}

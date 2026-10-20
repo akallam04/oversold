@@ -8,7 +8,7 @@ Oversold is a test harness in Go that runs controlled concurrent checkouts again
 
 ## Status
 
-Early setup. There are no results yet. Every number added later comes with the raw run histories behind it.
+The first measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 and 2.21.2, with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
 
 ## How it works
 
@@ -112,6 +112,7 @@ internal/dbstate/              read-only Postgres snapshot of stock, reservation
 internal/localguard/           refuses URLs that are not localhost
 internal/envfile/              reads .env
 scenarios/medusa/              shipped scenarios
+results/                       measured run sets: scenario, report and gzipped histories
 docs/                          scenario format, history format and check rules
 targets/medusa/Dockerfile      builds and runs one pinned Medusa version
 targets/medusa/app/            shared medusa-config.ts, tsconfig and seed script
