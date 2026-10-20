@@ -36,3 +36,32 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
       - run: ./gitleaks git --redact --no-banner .
+      - name: Scan unpacked result histories
+        run: |
+          set -eu
+          tmp=$(mktemp -d)
+          find results -name '*.json.gz' -print | while read -r f; do
+            mkdir -p "$tmp/$(dirname "$f")"
+            gunzip -c "$f" > "$tmp/${f%.gz}"
+          done
+          echo "unpacked $(find "$tmp" -name '*.json' | wc -l) histories"
+          ./gitleaks dir --redact --no-banner "$tmp"
+
+  verify-results:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make build
+      - name: Verify every results folder
+        run: |
+          set -eu
+          count=0
+          for d in $(find results -mindepth 2 -maxdepth 2 -type d | sort); do
+            ./bin/oversold check --verify "$d"
+            count=$((count + 1))
+          done
+          echo "verified $count folders"
+          test "$count" -gt 0
