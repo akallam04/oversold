@@ -105,11 +105,19 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func checkCmd(args []string, stdout, stderr io.Writer) int {
+	verify := false
+	if len(args) == 2 && args[0] == "--verify" {
+		verify = true
+		args = args[1:]
+	}
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		fmt.Fprintln(stderr, "usage: oversold check <run folder>")
+		fmt.Fprintln(stderr, "usage: oversold check [--verify] <run folder>")
 		return report.ExitUsage
 	}
 	dir := args[0]
+	if verify {
+		return verifyCmd(dir, stdout, stderr)
+	}
 	file, entries, problems, err := report.LoadFolder(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "oversold check: %v\n", err)
@@ -178,5 +186,22 @@ func exportCmd(args []string, stdout, stderr io.Writer) int {
 	for _, name := range written {
 		fmt.Fprintln(stdout, filepath.Join(args[1], name))
 	}
+	return 0
+}
+
+func verifyCmd(dir string, stdout, stderr io.Writer) int {
+	mismatches, err := report.Verify(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold check --verify: %v\n", err)
+		return report.ExitUsage
+	}
+	for _, m := range mismatches {
+		fmt.Fprintf(stderr, "%s: %s\n", dir, m)
+	}
+	if len(mismatches) > 0 {
+		fmt.Fprintf(stdout, "%s: %d mismatches\n", dir, len(mismatches))
+		return report.ExitMismatch
+	}
+	fmt.Fprintf(stdout, "%s: verified, stored verdicts and report match the recomputed ones\n", dir)
 	return 0
 }

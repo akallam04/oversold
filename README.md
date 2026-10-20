@@ -79,6 +79,7 @@ make up
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
 ./bin/oversold run scenarios/medusa/last-unit-two-servers.yaml --runs 3 --version 2.19.0
 ./bin/oversold check runs/<folder>
+./bin/oversold check --verify runs/<folder>
 ./bin/oversold export runs/<folder> <dest>
 make images
 make psql DB=medusa
@@ -88,7 +89,7 @@ make down
 
 `oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>-<version>/`. It builds the Medusa image and template database for a version the first time that version runs. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
 
-`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker. It reads plain and gzipped histories. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
+`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker. It reads plain and gzipped histories. `oversold check --verify runs/<folder>` writes nothing and exits 0 only when the stored verdicts and the report match the recomputed ones, and 1 when anything differs, whatever the verdicts are. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 

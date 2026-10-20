@@ -25,6 +25,7 @@ const (
 	ExitFail         = 1
 	ExitUsage        = 2
 	ExitInconclusive = 3
+	ExitMismatch     = 1
 
 	MaxHarnessErrorsInARow = 3
 )
@@ -433,4 +434,76 @@ func writeGzip(path string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+func Verify(dir string) ([]string, error) {
+	file, entries, problems, err := LoadFolder(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("%s: invalid scenario: %s", file.Path, strings.Join(problems, "; "))
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	if err != nil {
+		return nil, fmt.Errorf("read report: %w", err)
+	}
+	var saved Report
+	if err := json.Unmarshal(b, &saved); err != nil {
+		return nil, fmt.Errorf("read report: %w", err)
+	}
+
+	var mismatches []string
+	selected := file.Scenario.SelectedChecks()
+	planned := 0
+	recomputedEntries := make([]Entry, len(entries))
+	for i, e := range entries {
+		planned = max(planned, e.History.Run.Runs)
+		recomputed, err := checks.Evaluate(e.History, selected)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", e.File, err)
+		}
+		if len(e.History.Verdicts) == 0 {
+			mismatches = append(mismatches, fmt.Sprintf("%s: no stored verdicts", e.File))
+		} else if !sameJSON(e.History.Verdicts, recomputed) {
+			mismatches = append(mismatches, fmt.Sprintf("%s: recomputed verdicts differ from the stored ones", e.File))
+		}
+		h := *e.History
+		h.Verdicts = recomputed
+		recomputedEntries[i] = Entry{File: e.File, History: &h}
+	}
+
+	want := Build(file, recomputedEntries, planned, StoppedEarly(recomputedEntries, planned))
+	for _, d := range reportDiffs(&saved, want) {
+		mismatches = append(mismatches, "report.json: "+d)
+	}
+	return mismatches, nil
+}
+
+func reportDiffs(saved, want *Report) []string {
+	var d []string
+	field := func(name string, a, b any) {
+		if !sameJSON(a, b) {
+			d = append(d, name+" does not match the recomputed value")
+		}
+	}
+	field("schema", saved.Schema, want.Schema)
+	field("scenario", saved.Scenario, want.Scenario)
+	field("oversold", saved.Oversold, want.Oversold)
+	field("versions_used", saved.VersionsUsed, want.VersionsUsed)
+	field("servers", saved.Servers, want.Servers)
+	field("postgres_version", saved.PostgresVersion, want.PostgresVersion)
+	field("runs_planned", saved.RunsPlanned, want.RunsPlanned)
+	field("runs_recorded", saved.RunsRecorded, want.RunsRecorded)
+	field("stopped_early", saved.StoppedEarly, want.StoppedEarly)
+	field("checks", saved.Checks, want.Checks)
+	field("runs", saved.Runs, want.Runs)
+	field("exit_code", saved.ExitCode, want.ExitCode)
+	return d
+}
+
+func sameJSON(a, b any) bool {
+	ja, err1 := json.Marshal(a)
+	jb, err2 := json.Marshal(b)
+	return err1 == nil && err2 == nil && bytes.Equal(ja, jb)
 }

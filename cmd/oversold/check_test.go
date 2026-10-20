@@ -8,6 +8,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/akallam04/oversold/internal/checks"
+	"github.com/akallam04/oversold/internal/history"
+	"github.com/akallam04/oversold/internal/scenario"
 )
 
 func copyRunFolder(t *testing.T, name string) string {
@@ -228,4 +232,117 @@ func sameVerdicts(t *testing.T, a, b []byte) bool {
 	ja, _ := json.Marshal([]any{ra.ExitCode, ra.Checks, ra.Runs})
 	jb, _ := json.Marshal([]any{rb.ExitCode, rb.Checks, rb.Runs})
 	return bytes.Equal(ja, jb)
+}
+
+func storeVerdicts(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "run-001.json")
+	h, err := history.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, problems := scenario.Load(filepath.Join(dir, filepath.Base(dir)+".yaml"))
+	if len(problems) > 0 {
+		t.Fatal(problems)
+	}
+	if h.Verdicts, err = checks.Evaluate(h, f.Scenario.SelectedChecks()); err != nil {
+		t.Fatal(err)
+	}
+	if err := history.WriteJSON(path, h, nil); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	run([]string{"check", dir}, &stdout, &stderr)
+}
+
+func editJSON(t *testing.T, path string, edit func(map[string]any)) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal(b, &v); err != nil {
+		t.Fatal(err)
+	}
+	edit(v)
+	b, _ = json.Marshal(v)
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerify(t *testing.T) {
+	verify := func(dir string) (int, string) {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"check", "--verify", dir}, &stdout, &stderr)
+		return code, stdout.String() + stderr.String()
+	}
+
+	for _, name := range []string{"normal-checkout", "single-cart-over-demand"} {
+		dir := copyRunFolder(t, name)
+		storeVerdicts(t, dir)
+		before, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+		if code, out := verify(dir); code != 0 {
+			t.Errorf("%s: verify = %d\n%s", name, code, out)
+		}
+		after, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+		if !bytes.Equal(before, after) {
+			t.Errorf("%s: verify rewrote report.json", name)
+		}
+
+		dst := filepath.Join(t.TempDir(), "export")
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"export", dir, dst}, &stdout, &stderr); code != 0 {
+			t.Fatalf("export = %d: %s", code, stderr.String())
+		}
+		if code, out := verify(dst); code != 0 {
+			t.Errorf("%s: verify on export = %d\n%s", name, code, out)
+		}
+	}
+
+	t.Run("changed verdict", func(t *testing.T) {
+		dir := copyRunFolder(t, "normal-checkout")
+		storeVerdicts(t, dir)
+		editJSON(t, filepath.Join(dir, "run-001.json"), func(h map[string]any) {
+			v := h["verdicts"].([]any)[0].(map[string]any)
+			v["result"] = "fail"
+		})
+		if code, out := verify(dir); code != 1 || !strings.Contains(out, "recomputed verdicts differ") {
+			t.Errorf("verify = %d\n%s", code, out)
+		}
+	})
+	t.Run("changed report", func(t *testing.T) {
+		dir := copyRunFolder(t, "normal-checkout")
+		storeVerdicts(t, dir)
+		editJSON(t, filepath.Join(dir, "report.json"), func(r map[string]any) { r["exit_code"] = 3 })
+		if code, out := verify(dir); code != 1 || !strings.Contains(out, "exit_code does not match") {
+			t.Errorf("verify = %d\n%s", code, out)
+		}
+	})
+	t.Run("changed count", func(t *testing.T) {
+		dir := copyRunFolder(t, "single-cart-over-demand")
+		storeVerdicts(t, dir)
+		editJSON(t, filepath.Join(dir, "report.json"), func(r map[string]any) {
+			c := r["checks"].([]any)[0].(map[string]any)
+			c["fail"], c["pass"] = 0, 1
+		})
+		if code, out := verify(dir); code != 1 || !strings.Contains(out, "checks does not match") {
+			t.Errorf("verify = %d\n%s", code, out)
+		}
+	})
+	t.Run("no stored verdicts", func(t *testing.T) {
+		dir := copyRunFolder(t, "normal-checkout")
+		var stdout, stderr bytes.Buffer
+		run([]string{"check", dir}, &stdout, &stderr)
+		if code, out := verify(dir); code != 1 || !strings.Contains(out, "no stored verdicts") {
+			t.Errorf("verify = %d\n%s", code, out)
+		}
+	})
+	t.Run("no report", func(t *testing.T) {
+		dir := copyRunFolder(t, "normal-checkout")
+		if code, _ := verify(dir); code != 2 {
+			t.Errorf("verify without report = %d, want 2", code)
+		}
+	})
 }

@@ -20,6 +20,8 @@ commands:
             oversold run scenarios/medusa/normal-checkout.yaml [--runs N] [--version X]
   check     recompute every verdict and the report from a run folder, no Docker needed
             oversold check runs/<folder>
+            with --verify, write nothing and exit 0 only if the stored verdicts and
+            report match the recomputed ones, 1 otherwise, 2 if the folder cannot be read
   export    copy a run folder's scenario, report and gzipped histories to dest
             oversold export runs/<folder> <dest>
   version   print the version
