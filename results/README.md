@@ -17,9 +17,9 @@ On 2.22.0, the same checks failed in the same scenarios as on 2.21.2. The fail c
 | duplicate-complete | 2.22.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete/2.22.0/report.md) |
 | duplicate-complete | 2.21.2 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete/2.21.2/report.md) |
 | duplicate-complete | 2.19.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete/2.19.0/report.md) |
-| duplicate-complete-two-servers | 2.22.0 | no issue | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.22.0/report.md) |
-| duplicate-complete-two-servers | 2.21.2 | no issue | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.21.2/report.md) |
-| duplicate-complete-two-servers | 2.19.0 | no issue | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.19.0/report.md) |
+| duplicate-complete-two-servers | 2.22.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.22.0/report.md) |
+| duplicate-complete-two-servers | 2.21.2 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.21.2/report.md) |
+| duplicate-complete-two-servers | 2.19.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](duplicate-complete-two-servers/2.19.0/report.md) |
 | last-unit-one-server | 2.22.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](last-unit-one-server/2.22.0/report.md) |
 | last-unit-one-server | 2.21.2 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](last-unit-one-server/2.21.2/report.md) |
 | last-unit-one-server | 2.19.0 | control | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | fail 0 of 30 | 0 | 0 | [report](last-unit-one-server/2.19.0/report.md) |

@@ -1,11 +1,11 @@
 schema: oversold.scenario/v1
 name: duplicate-complete-two-servers
 description: >
-  One cart with OVS-PIECE 1, built on server 1, is completed at the same
-  moment by one action on server 1 and one on server 2. Medusa's cart lock is
-  in memory, one per server. Its rules expect one order and one reservation
-  for the cart, with both calls either returning that order or one of them
-  rejected.
+  Control. One cart with OVS-PIECE 1, built on server 1, is completed at the
+  same moment by one action on server 1 and one on server 2. Medusa's cart
+  lock is in memory, one per server. Its rules expect one order and one
+  reservation for the cart, with both calls either returning that order or one
+  of them rejected.
 target:
   engine: medusa
   version: 2.21.2
