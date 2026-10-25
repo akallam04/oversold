@@ -8,7 +8,7 @@ Oversold is a test harness in Go that runs controlled concurrent checkouts again
 
 ## Status
 
-The first measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026) and 2.21.2 (released Sep 28, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
+The measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
 
 ## How it works
 
