@@ -1,21 +1,47 @@
 # Oversold
 
-[![ci](https://github.com/akallam04/oversold/actions/workflows/ci.yml/badge.svg)](https://github.com/akallam04/oversold/actions/workflows/ci.yml)
+[![ci](https://github.com/akallam04/oversold/actions/workflows/ci.yml/badge.svg)](https://github.com/akallam04/oversold/actions/workflows/ci.yml) [![repro](https://github.com/akallam04/oversold/actions/workflows/repro.yml/badge.svg)](https://github.com/akallam04/oversold/actions/workflows/repro.yml)
 
 **Jepsen-style history checking applied to full checkout flows.**
 
-Oversold is a test harness in Go that runs controlled concurrent checkouts against local copies of open-source commerce engines, injects failures, records every request and the real database rows, and checks money and stock rules against that history.
+Oversold is a test harness in Go that races concurrent checkouts against local copies of open-source commerce engines, records every request and the real database rows, and checks stock and order rules against that history.
 
 ## Status
 
 The measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
 
+The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
+
+## Reproduce in one command
+
+With Docker running, Go 1.27 installed and `.env` copied from `.env.example`:
+
+```sh
+make repro
+make repro MEDUSA=2.21.2
+```
+
+`make repro` builds Oversold, starts only Postgres, and runs `./bin/oversold expect expectations/medusa.yaml` on the newest folder under `targets/medusa/versions/`, or on the version given with `MEDUSA=X`. Each case runs 3 times, each run on a fresh database:
+
+| Case | Targets | Expected |
+|---|---|---|
+| single-cart-over-demand | [#16502](https://github.com/medusajs/medusa/issues/16502) | `no_oversell` fails in every run, the other checks pass in every run |
+| normal-checkout | control for #16502 | every check passes in every run |
+| last-unit-two-servers | [#17032](https://github.com/medusajs/medusa/issues/17032) | `no_oversell` and `reserved_matches_reservations` fail in at least one run, the other checks pass in every run |
+| last-unit-one-server | control for #17032 | every check passes in every run |
+| counter-two-servers | [#17032](https://github.com/medusajs/medusa/issues/17032) | `reserved_matches_reservations` fails in at least one run, the other checks pass in every run |
+| counter-one-server | control for #17032 | every check passes in every run |
+
+Exit 0, or a green repro badge, means the known bugs still reproduced and the controls still passed on that version. Exit 1 means an expectation was not met, and 3 means a run was inconclusive or the harness failed, so the counts cannot be trusted. Make itself exits 2 whenever the command fails, and its last line, `make: *** [repro] Error N`, shows the code from `oversold expect`. The table, `summary.md` and every run folder are in `runs/<UTC time>-expect-<version>/`. [docs/expect-format.md](docs/expect-format.md) describes the file.
+
+Measured on one Apple Silicon Mac with Docker Desktop: the first `make repro` for a version built its Medusa image in 41 seconds and its template database in 7 seconds, and took 2 minutes 36 seconds in all. With the image already built, it took 1 minute 58 seconds, including the template. On a fresh machine, pulling the Node and Postgres base images adds to the first run.
+
 ## How it works
 
 1. Start a pinned engine version and its database in Docker Compose.
-2. Run scripted clients that race checkouts, with faults such as a lost response or a killed server.
+2. Run scripted clients that race checkout completions against each other, on one Medusa server or two.
 3. Record a history of every request with its start and end time, request, response and outcome: ok, failed, or unknown when it timed out.
-4. Read the real order, reservation and stock rows and check the rules.
+4. Read the real order, reservation and stock rows and check stock and order rules.
 
 ## Targets
 
@@ -38,6 +64,7 @@ The seed creates one US region, one stock location and these SKUs:
 A scenario is a YAML file that sets stock, prepares carts and races requests against them, then repeats that for a number of runs. Every run starts from a fresh copy of a template database made right after migrate and seed, with the Medusa servers restarted, so runs cannot affect each other. Each run writes one JSON history with every HTTP call, its outcome (`ok`, `failed` or `unknown`), database snapshots before and after the race, and the verdict of each chosen check. Secrets are masked before a history is written.
 
 - [docs/scenario-format.md](docs/scenario-format.md): every scenario field and rule, with an example.
+- [docs/expect-format.md](docs/expect-format.md): the expectations file that `oversold expect` and `make repro` run.
 - [docs/history-format.md](docs/history-format.md): every history field, the outcome rules and what gets masked.
 - [docs/checks.md](docs/checks.md): the exact rule behind each check, its version, and when a verdict is inconclusive.
 - [scenarios/medusa/](scenarios/medusa/): the scenarios that ship with Oversold.
@@ -94,6 +121,9 @@ make up
 ./bin/oversold check runs/<folder>
 ./bin/oversold check --verify runs/<folder>
 ./bin/oversold export runs/<folder> <dest>
+./bin/oversold versions
+./bin/oversold expect expectations/medusa.yaml --version 2.21.2 --runs 5
+make repro
 make images
 make psql DB=medusa
 make logs
@@ -106,6 +136,10 @@ make down
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
+`oversold versions` prints the Medusa versions Oversold can run, oldest first. `oversold expect <file>` runs every case of an expectations file on one version, `--version X` or the newest, and exits 0 when every expectation was met, 1 when one was not, 2 for an invalid file or bad usage, and 3 when a run was inconclusive or the harness failed.
+
+To add a Medusa version, run `scripts/add-medusa-version.sh X.Y.Z` and commit the folder it creates. The script copies the newest folder under `targets/medusa/versions/`, sets every `@medusajs` package to exactly X.Y.Z, copies `engines.node` from `@medusajs/medusa@X.Y.Z`, stops if the Node version in `targets/medusa/Dockerfile` does not satisfy it, and makes the lockfile inside that Node image. It needs Docker, Go and network access to npm.
+
 ## Safety
 
 Oversold only runs against local copies it starts in Docker, never live stores or public services. Security bugs found in an engine are reported privately to that project first.
@@ -113,8 +147,9 @@ Oversold only runs against local copies it starts in Docker, never live stores o
 ## Project layout
 
 ```
-cmd/oversold/                  CLI entry point: validate, run, check, export
+cmd/oversold/                  CLI entry point: validate, run, check, export, expect, versions
 internal/scenario/             scenario format v1, strict decoding and validation
+internal/expect/               expectation format v1, oversold expect summaries and exit codes
 internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts
 internal/checks/               the four checks, pure functions over one history
 internal/report/               report.json and report.md, exit codes
@@ -126,19 +161,21 @@ internal/dbstate/              read-only Postgres snapshot of stock, reservation
 internal/localguard/           refuses URLs that are not localhost
 internal/envfile/              reads .env
 scenarios/medusa/              shipped scenarios
+expectations/                  known bugs next to their controls, for oversold expect and make repro
 results/                       measured run sets: scenario, report and gzipped histories
-docs/                          scenario format, history format and check rules
+docs/                          scenario format, expectation format, history format and check rules
 targets/medusa/Dockerfile      builds and runs one pinned Medusa version
 targets/medusa/app/            shared medusa-config.ts, tsconfig and seed script
 targets/medusa/versions/       one pinned package.json and lockfile per Medusa version
 targets/medusa/db/             creates the medusa database in Postgres
 scripts/check-tools.sh         checks that required tools are installed
+scripts/add-medusa-version.sh  adds a pinned Medusa version folder with its lockfile
 .githooks/                     pre-commit and commit-msg hooks
-.github/workflows/             CI: vet, test, build, compose check, secret scan
+.github/workflows/             ci: vet, test, build, compose check, secret scan, results verify. repro: known bugs and controls
 compose.yaml                   Postgres, Medusa migrate, seed and two servers
 .env.example                   template for .env
 .gitleaks.toml                 gitleaks config
-Makefile                       build, test and stack commands
+Makefile                       build, test, repro and stack commands
 ```
 
 ## License
