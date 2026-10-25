@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 const Schema = "oversold.scenario/v1"
@@ -50,10 +52,6 @@ var Catalog = []Variant{
 var InventorySKUs = []string{"WIDGET", "SOLO"}
 
 var SeededStock = map[string]int{"WIDGET": 10, "SOLO": 1}
-
-var Engines = map[string][]string{
-	"medusa": {"2.19.0", "2.21.2"},
-}
 
 var Checks = []string{
 	"no_oversell",
@@ -190,11 +188,22 @@ func (s *Scenario) ResolveVersion(override string) (string, error) {
 	if override == "" {
 		return s.Target.Version, nil
 	}
-	versions := Engines[s.Target.Engine]
+	versions, err := Versions(s.Target.Engine)
+	if err != nil {
+		return "", fmt.Errorf("--version %s: %w", override, err)
+	}
 	if !slices.Contains(versions, override) {
 		return "", fmt.Errorf("--version %s: %s versions Oversold builds are %s", override, s.Target.Engine, strings.Join(versions, ", "))
 	}
 	return override, nil
+}
+
+func Versions(engine string) ([]string, error) {
+	root, err := targets.FindRoot()
+	if err != nil {
+		return nil, err
+	}
+	return targets.Versions(root, engine)
 }
 
 func (s *Scenario) SelectedChecks() []string {
@@ -331,17 +340,24 @@ func (s *Scenario) validate() []string {
 		add("description: required")
 	}
 
-	versions, engineOK := Engines[s.Target.Engine]
+	engines := targets.Engines()
+	engineOK := slices.Contains(engines, s.Target.Engine)
 	switch {
 	case s.Target.Engine == "":
-		add("target.engine: required, one of %s", strings.Join(sortedKeys(Engines), ", "))
+		add("target.engine: required, one of %s", strings.Join(engines, ", "))
 	case !engineOK:
-		add("target.engine: unknown engine %q, want one of %s", s.Target.Engine, strings.Join(sortedKeys(Engines), ", "))
+		add("target.engine: unknown engine %q, want one of %s", s.Target.Engine, strings.Join(engines, ", "))
 	}
 	if s.Target.Version == "" {
 		add("target.version: required")
-	} else if engineOK && !slices.Contains(versions, s.Target.Version) {
-		add("target.version: %s %s is not a version Oversold builds, want one of %s", s.Target.Engine, s.Target.Version, strings.Join(versions, ", "))
+	} else if engineOK {
+		versions, err := Versions(s.Target.Engine)
+		switch {
+		case err != nil:
+			add("target.version: %v", err)
+		case !slices.Contains(versions, s.Target.Version):
+			add("target.version: %s %s is not a version Oversold builds, want one of %s", s.Target.Engine, s.Target.Version, strings.Join(versions, ", "))
+		}
 	}
 	if s.Target.Servers < 1 || s.Target.Servers > 2 {
 		add("target.servers: got %d, want 1 or 2", s.Target.Servers)

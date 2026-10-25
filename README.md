@@ -8,7 +8,7 @@ Oversold is a test harness in Go that runs controlled concurrent checkouts again
 
 ## Status
 
-The first measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 and 2.21.2, with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
+The first measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026) and 2.21.2 (released Sep 28, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
 
 ## How it works
 
@@ -19,8 +19,9 @@ The first measured runs are in [results/](results/README.md): every scenario in 
 
 ## Targets
 
-- Medusa 2.21.2 and 2.19.0, each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>`) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
-- Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001, shares the same database and starts only for scenarios that ask for two servers.
+- Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>` by default) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. Medusa 2.22.0 needs Node 22.22 or later. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
+- The versions Oversold can run are the folders under `targets/medusa/versions/`. A folder counts only when its `package.json` pins every `@medusajs` package to exactly that version and its `package-lock.json` matches. Adding a version needs no code change.
+- Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001 by default, shares the same database and starts only for scenarios that ask for two servers.
 - Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine. No Redis.
 - Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock before a run.
 
@@ -70,7 +71,19 @@ make build
 
 In `.env`, replace each `change-me` value with a random one, for example from `openssl rand -hex 32`. `MEDUSA_ADMIN_EMAIL` and `MEDUSA_ADMIN_PASSWORD` are the local admin user the seed creates.
 
-`make images` builds one image per version under `targets/medusa/versions/`. `make up` builds the image for `MEDUSA_VERSION` in `.env` if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
+These `.env` keys set the Docker names and the local ports. Compose and `oversold run` read the same values, and a value set in the shell wins over `.env`.
+
+| Key | Default | Sets |
+|---|---|---|
+| `COMPOSE_PROJECT_NAME` | `oversold` | Compose project, so the container, network and volume names |
+| `OVERSOLD_IMAGE_PREFIX` | `oversold-medusa` | Medusa image name, `<prefix>:<version>` |
+| `POSTGRES_PORT` | `55432` | Postgres on 127.0.0.1 |
+| `MEDUSA_PORT` | `9000` | Medusa server 1 on 127.0.0.1 |
+| `MEDUSA_2_PORT` | `9001` | Medusa server 2 on 127.0.0.1 |
+
+To run a second copy of Oversold next to the first, give its `.env` a different project name, image prefix and ports. The two copies then share no containers, images, networks, volumes or ports.
+
+`make images` builds one image per version under `targets/medusa/versions/`. `make up` builds the image for `MEDUSA_VERSION` in `.env` if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 (`MEDUSA_PORT`) and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
 
 ```sh
 make up
@@ -106,7 +119,8 @@ internal/runner/               runs a scenario: reset, setup, barrier race, snap
 internal/checks/               the four checks, pure functions over one history
 internal/report/               report.json and report.md, exit codes
 internal/history/              history format v1, outcome rules and masking
-internal/stack/                Docker Compose control, template database reset, target facts
+internal/stack/                Docker Compose control, Docker names and ports, template database reset, target facts
+internal/targets/              reads and checks the pinned versions under targets/
 internal/medusa/               Store API and Admin API client
 internal/dbstate/              read-only Postgres snapshot of stock, reservations and orders
 internal/localguard/           refuses URLs that are not localhost

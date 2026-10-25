@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +19,7 @@ import (
 	"github.com/akallam04/oversold/internal/envfile"
 	"github.com/akallam04/oversold/internal/history"
 	"github.com/akallam04/oversold/internal/localguard"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 const (
@@ -26,7 +27,68 @@ const (
 	healthInterval = 100 * time.Millisecond
 	templatePrefix = "oversold template image="
 	appDatabase    = "medusa"
+
+	DefaultProject      = "oversold"
+	DefaultImagePrefix  = "oversold-medusa"
+	DefaultPostgresPort = "55432"
+	DefaultMedusaPort   = "9000"
+	DefaultMedusa2Port  = "9001"
 )
+
+var (
+	projectName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+	imagePrefix = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*$`)
+)
+
+type Names struct {
+	Project      string
+	ImagePrefix  string
+	PostgresPort string
+	MedusaPort   string
+	Medusa2Port  string
+}
+
+func NamesFrom(env envfile.Env) (Names, error) {
+	n := Names{
+		Project:      env.Get("COMPOSE_PROJECT_NAME", DefaultProject),
+		ImagePrefix:  env.Get("OVERSOLD_IMAGE_PREFIX", DefaultImagePrefix),
+		PostgresPort: env.Get("POSTGRES_PORT", DefaultPostgresPort),
+		MedusaPort:   env.Get("MEDUSA_PORT", DefaultMedusaPort),
+		Medusa2Port:  env.Get("MEDUSA_2_PORT", DefaultMedusa2Port),
+	}
+	if !projectName.MatchString(n.Project) {
+		return n, fmt.Errorf("COMPOSE_PROJECT_NAME %q: use lowercase letters, digits, dashes and underscores, starting with a letter or digit", n.Project)
+	}
+	if !imagePrefix.MatchString(n.ImagePrefix) || len(n.ImagePrefix) > 128 {
+		return n, fmt.Errorf("OVERSOLD_IMAGE_PREFIX %q: use lowercase letters and digits, separated by single dots, dashes or underscores", n.ImagePrefix)
+	}
+	seen := map[string]string{}
+	for _, p := range []struct{ key, value string }{
+		{"POSTGRES_PORT", n.PostgresPort},
+		{"MEDUSA_PORT", n.MedusaPort},
+		{"MEDUSA_2_PORT", n.Medusa2Port},
+	} {
+		port, err := strconv.Atoi(p.value)
+		if err != nil || port < 1 || port > 65535 || strconv.Itoa(port) != p.value {
+			return n, fmt.Errorf("%s %q: want a port from 1 to 65535", p.key, p.value)
+		}
+		if other, ok := seen[p.value]; ok {
+			return n, fmt.Errorf("%s and %s are both %s, each needs its own port", other, p.key, p.value)
+		}
+		seen[p.value] = p.key
+	}
+	return n, nil
+}
+
+func (n Names) Environ() []string {
+	return []string{
+		"COMPOSE_PROJECT_NAME=" + n.Project,
+		"OVERSOLD_IMAGE_PREFIX=" + n.ImagePrefix,
+		"POSTGRES_PORT=" + n.PostgresPort,
+		"MEDUSA_PORT=" + n.MedusaPort,
+		"MEDUSA_2_PORT=" + n.Medusa2Port,
+	}
+}
 
 var localDockerHosts = map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
 
@@ -71,25 +133,27 @@ type Stack struct {
 	Dir     string
 	Env     envfile.Env
 	Version string
+	Names   Names
 }
 
 func New(dir string, env envfile.Env, version string) (*Stack, error) {
-	if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(version) {
-		return nil, fmt.Errorf("bad medusa version %q", version)
-	}
 	if _, err := os.Stat(dir + "/compose.yaml"); err != nil {
 		return nil, fmt.Errorf("compose.yaml not found in %s, run oversold from the repository root", dir)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "targets", "medusa", "versions", version, "package-lock.json")); err != nil {
-		return nil, fmt.Errorf("no build files for medusa %s under targets/medusa/versions", version)
+	if err := targets.Check(dir, "medusa", version); err != nil {
+		return nil, err
 	}
-	return &Stack{Dir: dir, Env: env, Version: version}, nil
+	names, err := NamesFrom(env)
+	if err != nil {
+		return nil, err
+	}
+	return &Stack{Dir: dir, Env: env, Version: version, Names: names}, nil
 }
 
 func (s *Stack) Servers(n int) []Server {
 	all := []Server{
-		{Index: 1, Service: "medusa", URL: "http://127.0.0.1:" + s.Env.Get("MEDUSA_PORT", "9000")},
-		{Index: 2, Service: "medusa-2", URL: "http://127.0.0.1:" + s.Env.Get("MEDUSA_2_PORT", "9001")},
+		{Index: 1, Service: "medusa", URL: "http://127.0.0.1:" + s.Names.MedusaPort},
+		{Index: 2, Service: "medusa-2", URL: "http://127.0.0.1:" + s.Names.Medusa2Port},
 	}
 	if n < 1 || n > len(all) {
 		return nil
@@ -102,14 +166,14 @@ func (s *Stack) TemplateName() string {
 }
 
 func (s *Stack) ImageName() string {
-	return "oversold-medusa:" + s.Version
+	return s.Names.ImagePrefix + ":" + s.Version
 }
 
 func (s *Stack) DatabaseURL(db string) string {
 	u := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(s.Env.Get("POSTGRES_USER", "oversold"), s.Env.Get("POSTGRES_PASSWORD", "")),
-		Host:     "127.0.0.1:" + s.Env.Get("POSTGRES_PORT", "55432"),
+		Host:     "127.0.0.1:" + s.Names.PostgresPort,
 		Path:     "/" + db,
 		RawQuery: "sslmode=disable",
 	}
@@ -123,7 +187,7 @@ func (s *Stack) AppDatabaseURL() string {
 func (s *Stack) docker(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = s.Dir
-	cmd.Env = append(os.Environ(), "MEDUSA_VERSION="+s.Version)
+	cmd.Env = append(append(os.Environ(), "MEDUSA_VERSION="+s.Version), s.Names.Environ()...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

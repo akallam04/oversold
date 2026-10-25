@@ -4,13 +4,13 @@ x-medusa-env: &medusa-env
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/medusa?sslmode=disable
   JWT_SECRET: ${MEDUSA_JWT_SECRET:?set MEDUSA_JWT_SECRET in .env}
   COOKIE_SECRET: ${MEDUSA_COOKIE_SECRET:?set MEDUSA_COOKIE_SECRET in .env}
-  STORE_CORS: http://localhost:9000,http://localhost:9001
-  ADMIN_CORS: http://localhost:9000,http://localhost:9001
-  AUTH_CORS: http://localhost:9000,http://localhost:9001
+  STORE_CORS: http://localhost:${MEDUSA_PORT:-9000},http://localhost:${MEDUSA_2_PORT:-9001}
+  ADMIN_CORS: http://localhost:${MEDUSA_PORT:-9000},http://localhost:${MEDUSA_2_PORT:-9001}
+  AUTH_CORS: http://localhost:${MEDUSA_PORT:-9000},http://localhost:${MEDUSA_2_PORT:-9001}
   MEDUSA_DISABLE_TELEMETRY: "true"
 
 x-medusa: &medusa
-  image: oversold-medusa:${MEDUSA_VERSION:?set MEDUSA_VERSION in .env}
+  image: ${OVERSOLD_IMAGE_PREFIX:-oversold-medusa}:${MEDUSA_VERSION:?set MEDUSA_VERSION in .env}
   pull_policy: never
   environment: *medusa-env
 
@@ -34,7 +34,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:?set POSTGRES_PORT in .env}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - ./targets/medusa/db/create-database.sql:/docker-entrypoint-initdb.d/10-medusa.sql:ro
     healthcheck:
@@ -72,9 +72,9 @@ services:
   medusa:
     <<: *medusa-server
     ports:
-      - "127.0.0.1:${MEDUSA_PORT:?set MEDUSA_PORT in .env}:9000"
+      - "127.0.0.1:${MEDUSA_PORT:-9000}:9000"
 
   medusa-2:
     <<: *medusa-server
     ports:
-      - "127.0.0.1:${MEDUSA_2_PORT:?set MEDUSA_2_PORT in .env}:9000"
+      - "127.0.0.1:${MEDUSA_2_PORT:-9001}:9000"

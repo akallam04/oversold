@@ -29,7 +29,7 @@ env-check:
 
 images: env-check
 	@for v in $$(ls targets/medusa/versions); do \
-		echo "building oversold-medusa:$$v"; \
+		echo "building medusa $$v"; \
 		MEDUSA_VERSION=$$v docker compose build medusa-migrate || exit 1; \
 	done
 

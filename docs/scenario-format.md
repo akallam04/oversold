@@ -23,8 +23,8 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `name` | string | yes | Kebab-case: lowercase letters, digits and single dashes, at most 64 characters. Used in the output folder name. |
 | `description` | string | yes | Plain text. Not empty. |
 | `target.engine` | string | yes | Only `medusa`. |
-| `target.version` | string | yes | A Medusa version Oversold builds an image for: `2.19.0` or `2.21.2`. Each version has its own image (`oversold-medusa:<version>`) and its own template database. `oversold run --version X` runs the file against version X instead, and the history and report record both. |
-| `target.servers` | integer | yes | `1` or `2`. With 2, a second Medusa server (`medusa-2` on 127.0.0.1:9001) runs on the same database. |
+| `target.version` | string | yes | A Medusa version Oversold builds an image for: one with a folder under `targets/medusa/versions/` whose `package.json` pins every `@medusajs` package to exactly that version, with a matching `package-lock.json`. In this repository those are `2.19.0`, `2.21.2` and `2.22.0`. Each version has its own image (`oversold-medusa:<version>` by default, see `OVERSOLD_IMAGE_PREFIX` in the README) and its own template database. `oversold run --version X` runs the file against version X instead, and the history and report record both. |
+| `target.servers` | integer | yes | `1` or `2`. With 2, a second Medusa server (`medusa-2` on 127.0.0.1:9001 by default, `MEDUSA_2_PORT`) runs on the same database. |
 | `stock` | map | no | Inventory SKU to stocked quantity, from 0 to 1000000. Keys are `WIDGET` or `SOLO`. Applied after the reset through the Admin API. Items not listed keep their seeded stock. |
 | `carts` | map | yes | Cart name (kebab-case) to a cart. At least one cart. |
 | `carts.<name>.server` | integer | yes | The server the cart is built on, from 1 to `target.servers`. |

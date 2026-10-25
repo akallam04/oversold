@@ -121,14 +121,32 @@ func TestEmptyFile(t *testing.T) {
 	}
 }
 
-func TestVersionsHaveBuildFiles(t *testing.T) {
-	for _, v := range Engines["medusa"] {
-		for _, f := range []string{"package.json", "package-lock.json"} {
-			p := filepath.Join("..", "..", "targets", "medusa", "versions", v, f)
-			if _, err := os.Stat(p); err != nil {
-				t.Errorf("medusa %s is listed but %s is missing: %v", v, p, err)
-			}
+func TestVersionsComeFromTargetFolders(t *testing.T) {
+	versions, err := Versions("medusa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join("..", "..", "targets", "medusa", "versions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var folders []string
+	for _, e := range entries {
+		if e.IsDir() {
+			folders = append(folders, e.Name())
 		}
+	}
+	if len(versions) != len(folders) {
+		t.Fatalf("versions %v, folders %v", versions, folders)
+	}
+	for _, v := range []string{"2.19.0", "2.21.2", "2.22.0"} {
+		if _, problems := Parse([]byte(strings.Replace(minimal(""), "version: 2.21.2", "version: "+v, 1))); len(problems) != 0 {
+			t.Errorf("version %s: %q", v, problems)
+		}
+	}
+	_, problems := Parse([]byte(strings.Replace(minimal(""), "version: 2.21.2", "version: 2.18.0", 1)))
+	if want := "medusa 2.18.0 is not a version Oversold builds, want one of 2.19.0, 2.21.2, 2.22.0"; !strings.Contains(strings.Join(problems, "\n"), want) {
+		t.Errorf("want %q in %q", want, problems)
 	}
 }
 
