@@ -1,7 +1,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: tools build test vet images up down ps logs psql clean env-check
+.PHONY: tools build test vet images up down ps logs psql clean env-check repro
 
 tools:
 	@sh scripts/check-tools.sh
@@ -35,6 +35,10 @@ images: env-check
 
 up: env-check
 	docker compose up -d --build --wait medusa
+
+repro: env-check build
+	docker compose up -d --wait postgres
+	./bin/oversold expect expectations/medusa.yaml $(if $(MEDUSA),--version $(MEDUSA))
 
 down:
 	docker compose down -v
