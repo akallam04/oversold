@@ -67,6 +67,7 @@ func RunSet(ctx context.Context, opts Options) (*report.Report, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	st.Locking = sc.Target.LockingMode()
 
 	started := time.Now().UTC()
 	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name+"-"+used)
@@ -77,7 +78,7 @@ func RunSet(ctx context.Context, opts Options) (*report.Report, string, error) {
 		return nil, outDir, err
 	}
 	selected := sc.SelectedChecks()
-	fmt.Fprintf(opts.Stdout, "scenario %s: medusa %s (file says %s), %d runs, %d servers, release %s, checks %s\n", sc.Name, used, sc.Target.Version, runs, sc.Target.Servers, sc.Timing.Release, strings.Join(selected, ", "))
+	fmt.Fprintf(opts.Stdout, "scenario %s: medusa %s (file says %s), %d runs, %d servers, %s locking, release %s, checks %s\n", sc.Name, used, sc.Target.Version, runs, sc.Target.Servers, st.Locking, sc.Timing.Release, strings.Join(selected, ", "))
 
 	entries, stopped, err := runAll(ctx, runs, func(i int) (report.Entry, error, error) {
 		h, masker, runErr := runOne(ctx, st, opts, runs, i)
@@ -175,6 +176,9 @@ func runOne(ctx context.Context, st *stack.Stack, opts Options, runs, index int)
 		Carts: map[string]string{},
 		Race:  history.Race{Release: sc.Timing.Release, SettleMS: SettleWait.Milliseconds()},
 	}
+	if st.Redis() {
+		h.Target.Locking = st.Locking
+	}
 	err := execute(ctx, st, sc, opts.Env, index, rec, h)
 	h.Operations = rec.Operations()
 	h.End = history.Timestamp{Time: time.Now().UTC()}
@@ -204,6 +208,11 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 	for _, s := range h.Target.Servers {
 		if s.MedusaVersion != st.Version {
 			return fmt.Errorf("%s runs medusa %s, this run set uses %s", s.Service, s.MedusaVersion, st.Version)
+		}
+	}
+	if st.Redis() {
+		if h.Target.RedisVersion, err = st.RedisVersion(ctx); err != nil {
+			return fmt.Errorf("redis version: %w", err)
 		}
 	}
 
@@ -270,6 +279,13 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		return err
 	}
 
+	var redisBefore map[string]history.CommandStat
+	if st.Redis() {
+		if redisBefore, err = st.RedisCommandStats(ctx); err != nil {
+			return fmt.Errorf("redis command stats before the race: %w", err)
+		}
+	}
+
 	if err := race(ctx, sc, plannedActions, index, key, servers, rec, h); err != nil {
 		return fmt.Errorf("race: %w", err)
 	}
@@ -280,8 +296,24 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 	case <-time.After(SettleWait):
 	}
 
+	if st.Redis() {
+		redisAfter, err := st.RedisCommandStats(context.Background())
+		if err != nil {
+			return fmt.Errorf("redis command stats after the race: %w", err)
+		}
+		h.Race.RedisCommandStats = &history.CommandStats{Before: redisBefore, After: redisAfter}
+		n, err := history.LockCalls(redisBefore, redisAfter)
+		if err != nil {
+			return err
+		}
+		h.Race.LockCalls = &n
+	}
+
 	if h.After, err = db.Snapshot(context.Background(), scenario.VariantSKUs()); err != nil {
 		return err
+	}
+	if h.Race.LockCalls != nil && *h.Race.LockCalls == 0 {
+		return fmt.Errorf("redis locking: Medusa made no scripted lock calls during the race, so the servers did not lock through Redis; if %s was built before the locking option existed, remove it and run again to rebuild it", st.ImageName())
 	}
 	return nil
 }
@@ -431,6 +463,9 @@ func Summary(h *history.History) string {
 		after := level(h.After, "WIDGET")
 		fmt.Fprintf(&b, " | WIDGET stocked %s reserved %s->%s live %s | orders %d",
 			after.StockedQuantity, before.ReservedQuantity, after.ReservedQuantity, liveSum(h.After, "WIDGET"), len(h.After.Orders))
+	}
+	if h.Race.LockCalls != nil {
+		fmt.Fprintf(&b, " | lock calls %d", *h.Race.LockCalls)
 	}
 	if h.Reset != nil && !h.Reset.Healthy.IsZero() {
 		fmt.Fprintf(&b, " | reset %.1fs", h.Reset.Healthy.Sub(h.Reset.Start.Time).Seconds())

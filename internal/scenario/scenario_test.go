@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 func TestGoodFile(t *testing.T) {
@@ -110,6 +112,49 @@ func TestSingleProblems(t *testing.T) {
 			joined := strings.Join(problems, "\n")
 			if !strings.Contains(joined, tt.want) {
 				t.Errorf("want problem containing %q, got:\n%s", tt.want, joined)
+			}
+		})
+	}
+}
+
+func TestLockingField(t *testing.T) {
+	withLocking := func(line string) string {
+		return strings.Replace(minimal(""), "  servers: 1\n", "  servers: 1\n"+line, 1)
+	}
+	good := []struct {
+		name, line, want string
+	}{
+		{"left out", "", targets.LockingInMemory},
+		{"in-memory", "  locking: in-memory\n", targets.LockingInMemory},
+		{"redis", "  locking: redis\n", targets.LockingRedis},
+	}
+	for _, tt := range good {
+		t.Run(tt.name, func(t *testing.T) {
+			s, problems := Parse([]byte(withLocking(tt.line)))
+			if len(problems) != 0 {
+				t.Fatalf("problems: %q", problems)
+			}
+			if got := s.Target.LockingMode(); got != tt.want {
+				t.Errorf("locking mode = %q, want %q", got, tt.want)
+			}
+		})
+	}
+	bad := []struct {
+		name, line, want string
+	}{
+		{"no value", "  locking:\n", "target.locking: has no value; use in-memory or redis, or leave the field out for in-memory"},
+		{"null", "  locking: null\n", "target.locking: has no value"},
+		{"empty string", "  locking: \"\"\n", `target.locking: got "", want in-memory or redis`},
+		{"capital letter", "  locking: Redis\n", `target.locking: got "Redis", want in-memory or redis`},
+		{"other provider", "  locking: postgres\n", `target.locking: got "postgres", want in-memory or redis`},
+		{"list", "  locking: [redis]\n", "cannot unmarshal !!seq into string"},
+		{"misspelt field", "  lock: redis\n", "field lock not found"},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name, func(t *testing.T) {
+			_, problems := Parse([]byte(withLocking(tt.line)))
+			if len(problems) != 1 || !strings.Contains(problems[0], tt.want) {
+				t.Errorf("want one problem containing %q, got %q", tt.want, problems)
 			}
 		})
 	}

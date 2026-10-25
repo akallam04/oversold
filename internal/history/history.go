@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/akallam04/oversold/internal/dbstate"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 const Schema = "oversold.history/v1"
@@ -221,6 +222,15 @@ type Target struct {
 	Servers          []Server `json:"servers"`
 	PostgresVersion  string   `json:"postgres_version"`
 	TemplateDatabase string   `json:"template_database"`
+	Locking          string   `json:"locking,omitempty"`
+	RedisVersion     string   `json:"redis_version,omitempty"`
+}
+
+func (t Target) LockingMode() string {
+	if t.Locking == "" {
+		return targets.LockingInMemory
+	}
+	return t.Locking
 }
 
 type Reset struct {
@@ -243,10 +253,37 @@ type RaceAction struct {
 }
 
 type Race struct {
-	Release   string       `json:"release"`
-	ReleaseNS int64        `json:"release_ns"`
-	SettleMS  int64        `json:"settle_ms"`
-	Actions   []RaceAction `json:"actions"`
+	Release           string        `json:"release"`
+	ReleaseNS         int64         `json:"release_ns"`
+	SettleMS          int64         `json:"settle_ms"`
+	Actions           []RaceAction  `json:"actions"`
+	LockCalls         *int64        `json:"lock_calls,omitempty"`
+	RedisCommandStats *CommandStats `json:"redis_command_stats,omitempty"`
+}
+
+type CommandStat struct {
+	Calls         int64 `json:"calls"`
+	FailedCalls   int64 `json:"failed_calls"`
+	RejectedCalls int64 `json:"rejected_calls"`
+}
+
+type CommandStats struct {
+	Before map[string]CommandStat `json:"before"`
+	After  map[string]CommandStat `json:"after"`
+}
+
+var LockCommands = []string{"eval", "evalsha"}
+
+func LockCalls(before, after map[string]CommandStat) (int64, error) {
+	var n int64
+	for _, cmd := range LockCommands {
+		d := after[cmd].Calls - before[cmd].Calls
+		if d < 0 {
+			return 0, fmt.Errorf("redis %s calls went down from %d to %d, the stats were reset during the race", cmd, before[cmd].Calls, after[cmd].Calls)
+		}
+		n += d
+	}
+	return n, nil
 }
 
 type History struct {

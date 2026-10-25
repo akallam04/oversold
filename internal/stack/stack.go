@@ -134,6 +134,7 @@ type Stack struct {
 	Env     envfile.Env
 	Version string
 	Names   Names
+	Locking string
 }
 
 func New(dir string, env envfile.Env, version string) (*Stack, error) {
@@ -147,7 +148,11 @@ func New(dir string, env envfile.Env, version string) (*Stack, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Stack{Dir: dir, Env: env, Version: version, Names: names}, nil
+	return &Stack{Dir: dir, Env: env, Version: version, Names: names, Locking: targets.LockingInMemory}, nil
+}
+
+func (s *Stack) Redis() bool {
+	return s.Locking == targets.LockingRedis
 }
 
 func (s *Stack) Servers(n int) []Server {
@@ -187,7 +192,7 @@ func (s *Stack) AppDatabaseURL() string {
 func (s *Stack) docker(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = s.Dir
-	cmd.Env = append(append(os.Environ(), "MEDUSA_VERSION="+s.Version), s.Names.Environ()...)
+	cmd.Env = s.environ()
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -195,6 +200,10 @@ func (s *Stack) docker(ctx context.Context, args ...string) (string, error) {
 		return out.String(), fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), err, lastLines(out.String(), 5))
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+func (s *Stack) environ() []string {
+	return append(append(os.Environ(), "MEDUSA_VERSION="+s.Version, "OVERSOLD_LOCKING="+s.Locking), s.Names.Environ()...)
 }
 
 func (s *Stack) compose(ctx context.Context, args ...string) (string, error) {
@@ -229,6 +238,11 @@ func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
 
 	if _, err := s.compose(ctx, "stop", "medusa", "medusa-2"); err != nil {
 		return res, err
+	}
+	if s.Redis() {
+		if err := s.resetRedis(ctx); err != nil {
+			return res, fmt.Errorf("redis: %w", err)
+		}
 	}
 
 	imageID, built, err := s.ensureImage(ctx)
@@ -272,6 +286,95 @@ func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
 	}
 	res.Healthy = time.Now()
 	return res, nil
+}
+
+func (s *Stack) redisCLI(ctx context.Context, args ...string) (string, error) {
+	return s.compose(ctx, append([]string{"exec", "-T", "redis", "redis-cli"}, args...)...)
+}
+
+func (s *Stack) resetRedis(ctx context.Context) error {
+	if _, err := s.compose(ctx, "up", "-d", "--wait", "redis"); err != nil {
+		return err
+	}
+	out, err := s.redisCLI(ctx, "FLUSHALL", "SYNC")
+	if err != nil {
+		return err
+	}
+	if out != "OK" {
+		return fmt.Errorf("FLUSHALL replied %q", out)
+	}
+	if out, err = s.redisCLI(ctx, "DBSIZE"); err != nil {
+		return err
+	}
+	if out != "0" {
+		return fmt.Errorf("%s keys left after FLUSHALL", out)
+	}
+	return nil
+}
+
+func (s *Stack) RedisVersion(ctx context.Context) (string, error) {
+	out, err := s.redisCLI(ctx, "INFO", "server")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "redis_version:"); ok && v != "" {
+			return v, nil
+		}
+	}
+	return "", errors.New("INFO server has no redis_version")
+}
+
+func (s *Stack) RedisCommandStats(ctx context.Context) (map[string]history.CommandStat, error) {
+	out, err := s.redisCLI(ctx, "INFO", "commandstats")
+	if err != nil {
+		return nil, err
+	}
+	return ParseCommandStats(out)
+}
+
+func ParseCommandStats(info string) (map[string]history.CommandStat, error) {
+	stats := map[string]history.CommandStat{}
+	for _, line := range strings.Split(info, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "cmdstat_")
+		if !ok {
+			if line != "" && !strings.HasPrefix(line, "#") {
+				return nil, fmt.Errorf("unexpected line %q in INFO commandstats", line)
+			}
+			continue
+		}
+		name, fields, ok := strings.Cut(rest, ":")
+		if !ok || name == "" {
+			return nil, fmt.Errorf("unexpected line %q in INFO commandstats", line)
+		}
+		var st history.CommandStat
+		seenCalls := false
+		for _, f := range strings.Split(fields, ",") {
+			k, v, _ := strings.Cut(f, "=")
+			var dst *int64
+			switch k {
+			case "calls":
+				dst, seenCalls = &st.Calls, true
+			case "failed_calls":
+				dst = &st.FailedCalls
+			case "rejected_calls":
+				dst = &st.RejectedCalls
+			default:
+				continue
+			}
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 0 {
+				return nil, fmt.Errorf("%s %s=%q in INFO commandstats is not a count", name, k, v)
+			}
+			*dst = n
+		}
+		if !seenCalls {
+			return nil, fmt.Errorf("%s has no calls in INFO commandstats", name)
+		}
+		stats[name] = st
+	}
+	return stats, nil
 }
 
 type PrepareResult struct {

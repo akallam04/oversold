@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/akallam04/oversold/internal/envfile"
+	"github.com/akallam04/oversold/internal/history"
 )
 
 func TestLocalEndpoint(t *testing.T) {
@@ -146,5 +147,100 @@ func TestNamesRefuseBadValues(t *testing.T) {
 		if _, err := NamesFrom(tt.env); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("NamesFrom(%v) = %v, want error with %q", tt.env, err, tt.want)
 		}
+	}
+}
+
+const statsBefore = "# Commandstats\r\n" +
+	"cmdstat_ping:calls=12,usec=20,usec_per_call=1.67,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_evalsha:calls=40,usec=900,usec_per_call=22.50,rejected_calls=0,failed_calls=1\r\n" +
+	"cmdstat_eval:calls=3,usec=100,usec_per_call=33.33,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_set:calls=43,usec=80,usec_per_call=1.86,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_info:calls=5,usec=300,usec_per_call=60.00,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_client|list:calls=1,usec=10,usec_per_call=10.00,rejected_calls=0,failed_calls=0\r\n"
+
+const statsAfter = "# Commandstats\r\n" +
+	"cmdstat_ping:calls=12,usec=20,usec_per_call=1.67,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_evalsha:calls=58,usec=1300,usec_per_call=22.41,rejected_calls=0,failed_calls=1\r\n" +
+	"cmdstat_eval:calls=3,usec=100,usec_per_call=33.33,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_set:calls=61,usec=110,usec_per_call=1.80,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_get:calls=6,usec=6,usec_per_call=1.00,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_info:calls=6,usec=360,usec_per_call=60.00,rejected_calls=0,failed_calls=0\r\n" +
+	"cmdstat_client|list:calls=1,usec=10,usec_per_call=10.00,rejected_calls=0,failed_calls=0\r\n"
+
+func TestLockCallsFromCommandStats(t *testing.T) {
+	before, err := ParseCommandStats(statsBefore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := ParseCommandStats(statsAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after["evalsha"]; got != (history.CommandStat{Calls: 58, FailedCalls: 1}) {
+		t.Errorf("evalsha = %+v", got)
+	}
+	if _, ok := after["client|list"]; !ok || len(after) != 7 {
+		t.Errorf("after has %d commands: %v", len(after), after)
+	}
+	n, err := history.LockCalls(before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 18 {
+		t.Errorf("lock calls = %d, want 18 (evalsha 40 to 58, eval 3 to 3)", n)
+	}
+
+	empty, err := ParseCommandStats("# Commandstats\r\n")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty stats = %v, %v", empty, err)
+	}
+	if n, err := history.LockCalls(empty, after); err != nil || n != 61 {
+		t.Errorf("lock calls from a fresh Redis = %d, %v, want 61", n, err)
+	}
+	if n, err := history.LockCalls(before, before); err != nil || n != 0 {
+		t.Errorf("lock calls with no change = %d, %v, want 0", n, err)
+	}
+	if _, err := history.LockCalls(after, before); err == nil || !strings.Contains(err.Error(), "went down from 58 to 40") {
+		t.Errorf("stats that went down: err = %v", err)
+	}
+}
+
+func TestParseCommandStatsRefusesBadInput(t *testing.T) {
+	for _, in := range []string{
+		"cmdstat_evalsha:calls=x,usec=1",
+		"cmdstat_evalsha:usec=1",
+		"cmdstat_:calls=1",
+		"cmdstat_evalsha",
+		"ERR unknown command",
+		"cmdstat_eval:calls=-1",
+	} {
+		if _, err := ParseCommandStats(in); err == nil {
+			t.Errorf("ParseCommandStats(%q) should fail", in)
+		}
+	}
+}
+
+func TestDockerEnvAlwaysSetsLocking(t *testing.T) {
+	clearNameEnv(t)
+	t.Setenv("OVERSOLD_LOCKING", "redis")
+	s, err := New("../..", envfile.Env{}, "2.22.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := func() string {
+		v := ""
+		for _, kv := range s.environ() {
+			if rest, ok := strings.CutPrefix(kv, "OVERSOLD_LOCKING="); ok {
+				v = rest
+			}
+		}
+		return v
+	}
+	if s.Redis() || last() != "in-memory" {
+		t.Errorf("default locking: Redis() = %v, docker gets OVERSOLD_LOCKING=%q, want in-memory over the shell's redis", s.Redis(), last())
+	}
+	s.Locking = "redis"
+	if !s.Redis() || last() != "redis" {
+		t.Errorf("redis locking: Redis() = %v, docker gets OVERSOLD_LOCKING=%q", s.Redis(), last())
 	}
 }

@@ -93,14 +93,24 @@ type Scenario struct {
 	Seed        *int64          `yaml:"seed"`
 	Checks      *[]string       `yaml:"checks"`
 
-	CartOrder   []string `yaml:"-"`
-	checksIsNil bool
+	CartOrder    []string `yaml:"-"`
+	checksIsNil  bool
+	lockingIsNil bool
+	lockingSet   bool
 }
 
 type Target struct {
 	Engine  string `yaml:"engine"`
 	Version string `yaml:"version"`
 	Servers int    `yaml:"servers"`
+	Locking string `yaml:"locking"`
+}
+
+func (t Target) LockingMode() string {
+	if t.Locking == "" {
+		return targets.LockingInMemory
+	}
+	return t.Locking
 }
 
 type Cart struct {
@@ -273,6 +283,10 @@ func Parse(b []byte) (*Scenario, []string) {
 
 	s.CartOrder = cartOrder(b, s)
 	s.checksIsNil = nullField(b, "checks")
+	if n := fieldNode(b, "target", "locking"); n != nil {
+		s.lockingIsNil = isNull(n)
+		s.lockingSet = n.Kind == yaml.ScalarNode
+	}
 	problems = append(problems, s.validate()...)
 	return s, problems
 }
@@ -303,18 +317,36 @@ func cartOrder(b []byte, s *Scenario) []string {
 }
 
 func nullField(b []byte, field string) bool {
+	return isNull(fieldNode(b, field))
+}
+
+func isNull(n *yaml.Node) bool {
+	return n != nil && n.Kind == yaml.ScalarNode && n.Tag == "!!null"
+}
+
+func fieldNode(b []byte, path ...string) *yaml.Node {
 	var doc yaml.Node
-	if yaml.Unmarshal(b, &doc) != nil || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-		return false
+	if yaml.Unmarshal(b, &doc) != nil || len(doc.Content) != 1 {
+		return nil
 	}
-	root := doc.Content[0]
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == field {
-			v := root.Content[i+1]
-			return v.Kind == yaml.ScalarNode && v.Tag == "!!null"
+	n := doc.Content[0]
+	for _, field := range path {
+		if n.Kind != yaml.MappingNode {
+			return nil
 		}
+		var next *yaml.Node
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == field {
+				next = n.Content[i+1]
+				break
+			}
+		}
+		if next == nil {
+			return nil
+		}
+		n = next
 	}
-	return false
+	return n
 }
 
 var kebab = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -363,6 +395,12 @@ func (s *Scenario) validate() []string {
 		add("target.servers: got %d, want 1 or 2", s.Target.Servers)
 	}
 	servers := s.Target.Servers
+	switch {
+	case s.lockingIsNil:
+		add("target.locking: has no value; use %s, or leave the field out for %s", strings.Join(targets.LockingModes, " or "), targets.LockingInMemory)
+	case s.lockingSet && !slices.Contains(targets.LockingModes, s.Target.Locking):
+		add("target.locking: got %q, want %s", s.Target.Locking, strings.Join(targets.LockingModes, " or "))
+	}
 
 	for _, sku := range sortedKeys(s.Stock) {
 		qty := s.Stock[sku]

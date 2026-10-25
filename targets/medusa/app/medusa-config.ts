@@ -2,6 +2,11 @@ import { loadEnv, defineConfig } from "@medusajs/framework/utils"
 
 loadEnv(process.env.NODE_ENV || "production", process.cwd())
 
+const locking = process.env.OVERSOLD_LOCKING || "in-memory"
+if (locking !== "in-memory" && locking !== "redis") {
+  throw new Error(`OVERSOLD_LOCKING is "${locking}", want in-memory or redis`)
+}
+
 module.exports = defineConfig({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
@@ -16,4 +21,25 @@ module.exports = defineConfig({
   admin: {
     disable: true,
   },
+  ...(locking === "redis"
+    ? {
+        modules: [
+          {
+            resolve: "@medusajs/medusa/locking",
+            options: {
+              providers: [
+                {
+                  resolve: "@medusajs/medusa/locking-redis",
+                  id: "locking-redis",
+                  is_default: true,
+                  options: {
+                    redisUrl: process.env.LOCKING_REDIS_URL,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }
+    : {}),
 })

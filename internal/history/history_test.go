@@ -181,3 +181,48 @@ func TestReadGzippedHistory(t *testing.T) {
 		t.Error("a .gz file that is not gzip should be an error")
 	}
 }
+
+func TestHistoryWithoutLockingFieldsReadsAsInMemory(t *testing.T) {
+	h, err := Read(filepath.Join("..", "checks", "testdata", "runs", "normal-checkout", "run-001.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.Target.LockingMode(); got != "in-memory" {
+		t.Errorf("locking mode = %q, want in-memory", got)
+	}
+	if h.Target.Locking != "" || h.Target.RedisVersion != "" || h.Race.LockCalls != nil || h.Race.RedisCommandStats != nil {
+		t.Errorf("old history decoded with locking fields: target %+v, race lock calls %v", h.Target, h.Race.LockCalls)
+	}
+	b, err := json.Marshal(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"locking"`, `"redis_version"`, `"lock_calls"`, `"redis_command_stats"`} {
+		if bytes.Contains(b, []byte(key)) {
+			t.Errorf("in-memory history written with %s", key)
+		}
+	}
+}
+
+func TestRedisLockingFieldsAreWritten(t *testing.T) {
+	zero := int64(0)
+	h := History{
+		Target: Target{Locking: "redis", RedisVersion: "7.4.11"},
+		Race: Race{LockCalls: &zero, RedisCommandStats: &CommandStats{
+			Before: map[string]CommandStat{"evalsha": {Calls: 4}},
+			After:  map[string]CommandStat{"evalsha": {Calls: 4}},
+		}},
+	}
+	b, err := json.Marshal(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"locking":"redis"`, `"redis_version":"7.4.11"`, `"lock_calls":0`, `"redis_command_stats":{"before":{"evalsha":{"calls":4,"failed_calls":0,"rejected_calls":0}}`} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("history lacks %s:\n%s", want, b)
+		}
+	}
+	if got := h.Target.LockingMode(); got != "redis" {
+		t.Errorf("locking mode = %q", got)
+	}
+}

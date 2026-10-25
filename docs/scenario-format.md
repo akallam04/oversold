@@ -25,6 +25,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `target.engine` | string | yes | Only `medusa`. |
 | `target.version` | string | yes | A Medusa version Oversold builds an image for: one with a folder under `targets/medusa/versions/` whose `package.json` pins every `@medusajs` package to exactly that version, with a matching `package-lock.json`. In this repository those are `2.19.0`, `2.21.2` and `2.22.0`. Each version has its own image (`oversold-medusa:<version>` by default, see `OVERSOLD_IMAGE_PREFIX` in the README) and its own template database. `oversold run --version X` runs the file against version X instead, and the history and report record both. |
 | `target.servers` | integer | yes | `1` or `2`. With 2, a second Medusa server (`medusa-2` on 127.0.0.1:9001 by default, `MEDUSA_2_PORT`) runs on the same database. |
+| `target.locking` | string | no | `in-memory` or `redis`. Left out, it is `in-memory`: Medusa's default in-memory locking provider, which only locks inside one server process. With `redis`, every Medusa server in the run uses Medusa's Redis locking provider (`@medusajs/medusa/locking-redis`) as the default Locking Module provider, against the `redis` service in `compose.yaml`. Medusa recommends that provider when more than one server runs. The event bus, cache and workflow engine stay in-memory either way. An empty value, or the field with no value, is an error. |
 | `stock` | map | no | Inventory SKU to stocked quantity, from 0 to 1000000. Keys are `WIDGET` or `SOLO`. Applied after the reset through the Admin API. Items not listed keep their seeded stock. |
 | `carts` | map | yes | Cart name (kebab-case) to a cart. At least one cart. |
 | `carts.<name>.server` | integer | yes | The server the cart is built on, from 1 to `target.servers`. |
@@ -70,14 +71,16 @@ A scenario chooses which checks apply to it. Checks take no parameters, so a sce
 
 ## What one run does
 
-1. Stop the Medusa servers, drop the `medusa` database and create it again from the template database for the target version (for example `medusa_template_2_21_2`). If the template is missing, or was built from a different image, Oversold builds it first by running `medusa db:migrate` and the seed once.
-2. Start the servers the scenario needs and wait for `GET /health` on each. The restart clears Medusa's in-memory locks, cache and workflow state.
-3. Set stock through the Admin API.
-4. Prepare each cart on its server: lines, email, US address, shipping method, payment collection and a `pp_system_default` payment session.
-5. Take a database snapshot.
-6. Open one HTTP connection per race action with a `GET /health` warm-up, then release the actions.
-7. Wait 2 seconds. This settle time is fixed in code.
-8. Take a second database snapshot, compute the verdict of every chosen check, and write the history.
+1. Stop the Medusa servers. For a `redis` scenario, start Redis if it is not running and empty it with `FLUSHALL`, so no lock key carries over from the run before.
+2. Drop the `medusa` database and create it again from the template database for the target version (for example `medusa_template_2_21_2`). If the template is missing, or was built from a different image, Oversold builds it first by running `medusa db:migrate` and the seed once. Migrate and seed always use the default in-memory config, so one template serves both locking modes.
+3. Start the servers the scenario needs and wait for `GET /health` on each. The restart clears Medusa's in-memory locks, cache and workflow state.
+4. Set stock through the Admin API.
+5. Prepare each cart on its server: lines, email, US address, shipping method, payment collection and a `pp_system_default` payment session.
+6. Take a database snapshot. For a `redis` scenario, also read Redis's `INFO commandstats`.
+7. Open one HTTP connection per race action with a `GET /health` warm-up, then release the actions.
+8. Wait 2 seconds. This settle time is fixed in code.
+9. For a `redis` scenario, read `INFO commandstats` again and count the `EVAL` and `EVALSHA` calls made since step 6. Medusa's Redis provider takes, renews and releases every lock with a Lua script, so this is the number of scripted lock calls the servers made during the race. A count of zero means the servers did not lock through Redis, and the run is a harness error.
+10. Take a second database snapshot, compute the verdict of every chosen check, and write the history.
 
 Any setup call that does not end `ok` is a harness error. That run is written with every check `inconclusive`, and the next run starts. `oversold run` stops early only after 3 harness errors in a row, and the report says so.
 

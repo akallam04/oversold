@@ -33,8 +33,8 @@ func validateCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	s := f.Scenario
 	carts, actions := s.Plan()
-	fmt.Fprintf(stdout, "%s: valid, scenario %s, %s %s on %d servers, %d carts, %d race actions, %d runs, checks %s\n",
-		args[0], s.Name, s.Target.Engine, s.Target.Version, s.Target.Servers, len(carts), len(actions), s.Runs, strings.Join(s.SelectedChecks(), ", "))
+	fmt.Fprintf(stdout, "%s: valid, scenario %s, %s %s on %d servers with %s locking, %d carts, %d race actions, %d runs, checks %s\n",
+		args[0], s.Name, s.Target.Engine, s.Target.Version, s.Target.Servers, s.Target.LockingMode(), len(carts), len(actions), s.Runs, strings.Join(s.SelectedChecks(), ", "))
 	return 0
 }
 

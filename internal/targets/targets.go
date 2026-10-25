@@ -19,6 +19,13 @@ var versionName = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 var packageScope = map[string]string{"medusa": "@medusajs/"}
 
+const (
+	LockingInMemory = "in-memory"
+	LockingRedis    = "redis"
+)
+
+var LockingModes = []string{LockingInMemory, LockingRedis}
+
 func Engines() []string {
 	return slices.Sorted(maps.Keys(packageScope))
 }

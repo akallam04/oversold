@@ -12,7 +12,7 @@ runs/<UTC start time>-<scenario name>-<medusa version used>/
   report.md                the same report as a table
 ```
 
-Histories can also be stored gzipped as `run-NNN.json.gz`. `oversold check` reads both forms. `oversold export <run folder> <dest>` copies the scenario file, the report and every history, gzipped, into an empty `<dest>`, with the report's links pointing at the gzipped files. `oversold check` on the export gives the same verdicts. `oversold check --verify <folder>` recomputes every verdict and the report without writing anything, and exits 0 only if they match what is stored, 1 if anything differs, and 2 if the folder cannot be read.
+Histories can also be stored gzipped as `run-NNN.json.gz`. `oversold check` reads both forms. `oversold export <run folder> <dest>` copies the scenario file, the report and every history, gzipped, into an empty `<dest>`, with the report's links pointing at the gzipped files. `oversold check` on the export gives the same verdicts. `oversold check --verify <folder>` recomputes every verdict and the report, and every `lock_calls` from its command stats, without writing anything, and exits 0 only if they match what is stored, 1 if anything differs, and 2 if the folder cannot be read.
 
 A history records what Oversold sent, what came back, the database rows before and after the race, and the verdict of each chosen check. The verdicts are computed from the rest of the file alone. `oversold check <run folder>` recomputes them with the current rules and rewrites the report. It never changes a history.
 
@@ -67,6 +67,8 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | `servers[].medusa_version` | `@medusajs/medusa` version read from inside the container. |
 | `postgres_version` | `server_version` reported by Postgres. |
 | `template_database` | Template the `medusa` database was copied from. |
+| `locking` | `redis` when the scenario set `target.locking: redis`. Left out for `in-memory`, the default, so a history without it ran with Medusa's in-memory locking. |
+| `redis_version` | `redis_version` from `INFO server` in the running Redis container. Only for `redis` runs. |
 
 Oversold refuses to start a run if any server reports a Medusa version other than `scenario_version`.
 
@@ -90,6 +92,8 @@ Oversold refuses to start a run if any server reports a Medusa version other tha
 | `actions[].jitter_ns` | Delay applied before the request was sent. |
 | `actions[].operation_id` | The operation that carried this action. Missing if it was never sent. |
 | `actions[].outcome` | Outcome of that operation. |
+| `lock_calls` | Only for `redis` runs. Scripted lock calls Medusa made during the race: the growth of the `eval` and `evalsha` call counts in `redis_command_stats` from `before` to `after`. Medusa's Redis provider takes, renews and releases locks only through Lua scripts. Zero makes the run a harness error. |
+| `redis_command_stats.before`, `redis_command_stats.after` | Only for `redis` runs. Every entry of Redis's `INFO commandstats`, read just before the race and again after the settle wait, by command name: `calls`, `failed_calls` and `rejected_calls`. Commands that Lua scripts run, such as `set`, `get` and `del`, have their own entries. |
 
 ## Operations
 
@@ -154,4 +158,4 @@ Quantities are written as JSON numbers exactly as Postgres returns them.
 
 ## Report
 
-`report.json` and `report.md` hold the scenario name and file hash, the Medusa version in the file and the versions used, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.
+`report.json` and `report.md` hold the scenario name and file hash, the Medusa version in the file and the versions used, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the locking mode and Redis versions (`locking` and `redis_versions` in `report.json`, left out for in-memory), each run's `lock_calls`, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.

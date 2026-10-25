@@ -16,6 +16,7 @@ import (
 	"github.com/akallam04/oversold/internal/checks"
 	"github.com/akallam04/oversold/internal/history"
 	"github.com/akallam04/oversold/internal/scenario"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 const Schema = "oversold.report/v1"
@@ -64,6 +65,7 @@ type Run struct {
 	File         string         `json:"file"`
 	Result       history.Result `json:"result"`
 	HarnessError string         `json:"harness_error,omitempty"`
+	LockCalls    *int64         `json:"lock_calls,omitempty"`
 	Verdicts     []RunVerdict   `json:"verdicts"`
 }
 
@@ -75,6 +77,8 @@ type Report struct {
 	VersionsUsed    []string          `json:"versions_used"`
 	Servers         []Server          `json:"servers"`
 	PostgresVersion string            `json:"postgres_version"`
+	Locking         string            `json:"locking,omitempty"`
+	RedisVersions   []string          `json:"redis_versions,omitempty"`
 	RunsPlanned     int               `json:"runs_planned"`
 	RunsRecorded    int               `json:"runs_recorded"`
 	StoppedEarly    string            `json:"stopped_early,omitempty"`
@@ -125,6 +129,12 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 		if r.PostgresVersion == "" {
 			r.PostgresVersion = h.Target.PostgresVersion
 		}
+		if r.Locking == "" {
+			r.Locking = h.Target.Locking
+		}
+		if v := h.Target.RedisVersion; v != "" && !slices.Contains(r.RedisVersions, v) {
+			r.RedisVersions = append(r.RedisVersions, v)
+		}
 		used := h.Target.Version
 		if used == "" {
 			used = h.Target.ScenarioVersion
@@ -133,7 +143,7 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 			r.VersionsUsed = append(r.VersionsUsed, used)
 		}
 
-		run := Run{Index: h.Run.Index, File: e.File, Result: checks.Summarize(h.Verdicts), HarnessError: h.HarnessError}
+		run := Run{Index: h.Run.Index, File: e.File, Result: checks.Summarize(h.Verdicts), HarnessError: h.HarnessError, LockCalls: h.Race.LockCalls}
 		for _, v := range h.Verdicts {
 			run.Verdicts = append(run.Verdicts, RunVerdict{Check: v.Check, Version: v.Version, Result: v.Result, Reason: v.Reason})
 			cc := counts[v.Check]
@@ -216,6 +226,13 @@ func (r *Report) Markdown() string {
 	if r.PostgresVersion != "" {
 		fmt.Fprintf(&b, "- Postgres %s\n", r.PostgresVersion)
 	}
+	fmt.Fprintf(&b, "- Locking: %s\n", r.LockingMode())
+	if len(r.RedisVersions) > 0 {
+		fmt.Fprintf(&b, "- Redis %s\n", strings.Join(r.RedisVersions, ", "))
+	}
+	if lo, hi, n := r.LockCallRange(); n > 0 {
+		fmt.Fprintf(&b, "- Scripted Redis lock calls during the race: %d to %d per run, recorded in %d runs\n", lo, hi, n)
+	}
 	fmt.Fprintf(&b, "- Runs: %d of %d recorded\n", r.RunsRecorded, r.RunsPlanned)
 	if r.StoppedEarly != "" {
 		fmt.Fprintf(&b, "- Stopped early: %s\n", r.StoppedEarly)
@@ -228,12 +245,19 @@ func (r *Report) Markdown() string {
 		fmt.Fprintf(&b, "| %s | %d | %d of %d | %d of %d | %d of %d |\n", c.Check, c.Version, c.Fail, n, c.Pass, n, c.Inconclusive, n)
 	}
 
+	lockColumn := r.Locking != ""
 	b.WriteString("\n## Runs\n\n| Run |")
 	for _, c := range r.Checks {
 		fmt.Fprintf(&b, " %s |", c.Check)
 	}
+	if lockColumn {
+		b.WriteString(" Lock calls |")
+	}
 	b.WriteString(" History |\n|---|")
 	for range r.Checks {
+		b.WriteString("---|")
+	}
+	if lockColumn {
 		b.WriteString("---|")
 	}
 	b.WriteString("---|\n")
@@ -241,6 +265,13 @@ func (r *Report) Markdown() string {
 		fmt.Fprintf(&b, "| %d |", run.Index)
 		for _, c := range r.Checks {
 			fmt.Fprintf(&b, " %s |", resultOf(run, c.Check))
+		}
+		if lockColumn {
+			if run.LockCalls != nil {
+				fmt.Fprintf(&b, " %d |", *run.LockCalls)
+			} else {
+				b.WriteString(" none |")
+			}
 		}
 		fmt.Fprintf(&b, " [%s](%s) |\n", run.File, run.File)
 	}
@@ -259,6 +290,30 @@ func (r *Report) Markdown() string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+func (r *Report) LockingMode() string {
+	if r.Locking == "" {
+		return targets.LockingInMemory
+	}
+	return r.Locking
+}
+
+func (r *Report) LockCallRange() (lo, hi int64, n int) {
+	for _, run := range r.Runs {
+		if run.LockCalls == nil {
+			continue
+		}
+		c := *run.LockCalls
+		if n == 0 || c < lo {
+			lo = c
+		}
+		if n == 0 || c > hi {
+			hi = c
+		}
+		n++
+	}
+	return lo, hi, n
 }
 
 func resultOf(run Run, check string) string {
@@ -463,6 +518,9 @@ func Verify(dir string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.File, err)
 		}
+		for _, m := range lockCallMismatches(e.History) {
+			mismatches = append(mismatches, fmt.Sprintf("%s: %s", e.File, m))
+		}
 		if len(e.History.Verdicts) == 0 {
 			mismatches = append(mismatches, fmt.Sprintf("%s: no stored verdicts", e.File))
 		} else if !sameJSON(e.History.Verdicts, recomputed) {
@@ -493,6 +551,8 @@ func reportDiffs(saved, want *Report) []string {
 	field("versions_used", saved.VersionsUsed, want.VersionsUsed)
 	field("servers", saved.Servers, want.Servers)
 	field("postgres_version", saved.PostgresVersion, want.PostgresVersion)
+	field("locking", saved.Locking, want.Locking)
+	field("redis_versions", saved.RedisVersions, want.RedisVersions)
 	field("runs_planned", saved.RunsPlanned, want.RunsPlanned)
 	field("runs_recorded", saved.RunsRecorded, want.RunsRecorded)
 	field("stopped_early", saved.StoppedEarly, want.StoppedEarly)
@@ -500,6 +560,29 @@ func reportDiffs(saved, want *Report) []string {
 	field("runs", saved.Runs, want.Runs)
 	field("exit_code", saved.ExitCode, want.ExitCode)
 	return d
+}
+
+func lockCallMismatches(h *history.History) []string {
+	stats, calls := h.Race.RedisCommandStats, h.Race.LockCalls
+	switch {
+	case stats == nil && calls == nil:
+		return nil
+	case stats == nil:
+		return []string{"lock_calls is set without redis_command_stats"}
+	case calls == nil:
+		if h.HarnessError == "" {
+			return []string{"redis_command_stats is set without lock_calls"}
+		}
+		return nil
+	}
+	n, err := history.LockCalls(stats.Before, stats.After)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	if n != *calls {
+		return []string{fmt.Sprintf("lock_calls is %d, the stored redis command stats give %d", *calls, n)}
+	}
+	return nil
 }
 
 func sameJSON(a, b any) bool {

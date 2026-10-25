@@ -48,7 +48,8 @@ Measured on one Apple Silicon Mac with Docker Desktop: the first `make repro` fo
 - Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>` by default) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. Medusa 2.22.0 needs Node 22.22 or later. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
 - The versions Oversold can run are the folders under `targets/medusa/versions/`. A folder counts only when its `package.json` pins every `@medusajs` package to exactly that version and its `package-lock.json` matches. Adding a version needs no code change.
 - Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001 by default, shares the same database and starts only for scenarios that ask for two servers.
-- Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine. No Redis.
+- Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine.
+- A scenario with `target.locking: redis` runs its servers with Medusa's Redis locking provider instead, set up the way Medusa's docs show, against a Redis 7.4.11 container in the same Compose project. Medusa recommends that provider when more than one server runs. Only locking changes: the event bus, cache and workflow engine stay in-memory, and migrate and seed keep the default config, so each version still has one template database. Redis starts only for those scenarios, has no published port, keeps nothing on disk and is emptied before every run. Each of those histories records the Redis version and the number of scripted lock calls Medusa made during the race, and a run with none is a harness error. Without the field, Medusa runs with the same config as before the option existed.
 - Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock before a run.
 
 The seed creates one US region, one stock location and these SKUs:
@@ -172,7 +173,7 @@ scripts/check-tools.sh         checks that required tools are installed
 scripts/add-medusa-version.sh  adds a pinned Medusa version folder with its lockfile
 .githooks/                     pre-commit and commit-msg hooks
 .github/workflows/             ci: vet, test, build, compose check, secret scan, results verify. repro: known bugs and controls
-compose.yaml                   Postgres, Medusa migrate, seed and two servers
+compose.yaml                   Postgres, Medusa migrate, seed, two servers and Redis
 .env.example                   template for .env
 .gitleaks.toml                 gitleaks config
 Makefile                       build, test, repro and stack commands
