@@ -1,0 +1,124 @@
+name: repro
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "targets/**"
+      - "scenarios/**"
+      - "expectations/**"
+      - "compose.yaml"
+      - "Makefile"
+      - "scripts/**"
+      - ".github/workflows/repro.yml"
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Medusa version, for example 2.22.0. Leave empty for the newest @medusajs/medusa on npm.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make build
+      - name: Pick the Medusa version
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [ "$EVENT" = push ]; then
+            version=$(./bin/oversold versions | tail -n 1)
+          elif [ -n "$INPUT" ]; then
+            version=$INPUT
+          else
+            version=$(npm view @medusajs/medusa version)
+          fi
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "not a Medusa version: $version" >&2
+            exit 1
+          fi
+          made=no
+          if ! ./bin/oversold versions | grep -qx "$version"; then
+            sh scripts/add-medusa-version.sh "$version"
+            made=yes
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "made=$made" >> "$GITHUB_OUTPUT"
+      - name: Write .env with random secrets
+        run: |
+          set -eu
+          cp .env.example .env
+          while grep -q 'change-me' .env; do
+            value=$(openssl rand -hex 32)
+            echo "::add-mask::$value"
+            sed -i "0,/change-me/s//$value/" .env
+          done
+      - name: make repro
+        env:
+          MEDUSA: ${{ steps.pick.outputs.version }}
+        run: make repro MEDUSA="$MEDUSA"
+      - name: Job summary
+        if: always()
+        env:
+          VERSION: ${{ steps.pick.outputs.version }}
+          MADE: ${{ steps.pick.outputs.made }}
+        run: |
+          if [ "$MADE" = yes ]; then
+            echo "Medusa $VERSION has no folder in this commit. Its package.json and lockfile were made at run time by scripts/add-medusa-version.sh, so this run is a check, not a published result." >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          fi
+          found=no
+          for f in runs/*-expect-*/summary.md; do
+            [ -f "$f" ] || continue
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            found=yes
+          done
+          if [ "$found" = no ]; then
+            echo "No summary.md was written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install gitleaks
+        if: always()
+        run: |
+          curl -sSfL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan runs/ for secrets
+        if: always()
+        run: |
+          mkdir -p runs
+          ./gitleaks dir --redact --no-banner runs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: repro-runs-${{ steps.pick.outputs.version || 'unknown' }}
+          path: runs/
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: |
+          if [ -f .env ]; then
+            docker compose down -v
+          fi
