@@ -17,8 +17,23 @@ func TestRepositoryVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"2.19.0", "2.21.2", "2.22.0"}; !slices.Equal(got, want) {
-		t.Errorf("versions = %v, want %v", got, want)
+	entries, err := os.ReadDir(filepath.Join(root, "targets", "medusa", "versions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var folders []string
+	for _, e := range entries {
+		if e.IsDir() {
+			folders = append(folders, e.Name())
+		}
+	}
+	if len(got) != len(folders) || !slices.IsSortedFunc(got, compareVersions) {
+		t.Errorf("versions = %v, folders %v", got, folders)
+	}
+	for _, v := range []string{"2.19.0", "2.21.2", "2.22.0"} {
+		if !slices.Contains(got, v) {
+			t.Errorf("versions %v are missing %s, which has published results", got, v)
+		}
 	}
 }
 

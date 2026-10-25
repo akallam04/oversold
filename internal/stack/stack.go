@@ -231,37 +231,22 @@ func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
 		return res, err
 	}
 
-	imageID, err := s.ImageID(ctx)
+	imageID, built, err := s.ensureImage(ctx)
+	res.ImageBuilt = built
 	if err != nil {
-		if _, err := s.compose(ctx, "build", "medusa-migrate"); err != nil {
-			return res, fmt.Errorf("build medusa image %s: %w", s.ImageName(), err)
-		}
-		res.ImageBuilt = true
-		if imageID, err = s.ImageID(ctx); err != nil {
-			return res, fmt.Errorf("medusa image %s not found after build: %w", s.ImageName(), err)
-		}
-	}
-
-	adminURL := s.DatabaseURL(s.Env.Get("POSTGRES_DB", "oversold"))
-	if err := localguard.Check(adminURL); err != nil {
 		return res, err
 	}
-	conn, err := pgx.Connect(ctx, adminURL)
+
+	conn, err := s.connectAdmin(ctx)
 	if err != nil {
-		return res, fmt.Errorf("connect to postgres, run make up first: %w", err)
+		return res, err
 	}
 	defer conn.Close(context.Background())
 
 	tmpl := s.TemplateName()
-	var comment *string
-	err = conn.QueryRow(ctx, `select shobj_description(oid, 'pg_database') from pg_database where datname = $1`, tmpl).Scan(&comment)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows), err == nil && (comment == nil || *comment != templatePrefix+imageID):
-		if err := s.buildTemplate(ctx, conn, tmpl, imageID); err != nil {
-			return res, fmt.Errorf("build template %s: %w", tmpl, err)
-		}
-		res.TemplateCreated = true
-	case err != nil:
+	created, err := s.ensureTemplate(ctx, conn, imageID)
+	res.TemplateCreated = created
+	if err != nil {
 		return res, err
 	}
 
@@ -287,6 +272,78 @@ func (s *Stack) Reset(ctx context.Context, servers int) (ResetResult, error) {
 	}
 	res.Healthy = time.Now()
 	return res, nil
+}
+
+type PrepareResult struct {
+	ImageID         string
+	ImageBuilt      bool
+	ImageTime       time.Duration
+	TemplateCreated bool
+	TemplateTime    time.Duration
+}
+
+func (s *Stack) Prepare(ctx context.Context) (PrepareResult, error) {
+	var res PrepareResult
+	if _, err := s.compose(ctx, "stop", "medusa", "medusa-2"); err != nil {
+		return res, err
+	}
+	start := time.Now()
+	imageID, built, err := s.ensureImage(ctx)
+	res.ImageID, res.ImageBuilt, res.ImageTime = imageID, built, time.Since(start)
+	if err != nil {
+		return res, err
+	}
+	conn, err := s.connectAdmin(ctx)
+	if err != nil {
+		return res, err
+	}
+	defer conn.Close(context.Background())
+	start = time.Now()
+	created, err := s.ensureTemplate(ctx, conn, imageID)
+	res.TemplateCreated, res.TemplateTime = created, time.Since(start)
+	return res, err
+}
+
+func (s *Stack) ensureImage(ctx context.Context) (string, bool, error) {
+	imageID, err := s.ImageID(ctx)
+	if err == nil {
+		return imageID, false, nil
+	}
+	if _, err := s.compose(ctx, "build", "medusa-migrate"); err != nil {
+		return "", false, fmt.Errorf("build medusa image %s: %w", s.ImageName(), err)
+	}
+	if imageID, err = s.ImageID(ctx); err != nil {
+		return "", true, fmt.Errorf("medusa image %s not found after build: %w", s.ImageName(), err)
+	}
+	return imageID, true, nil
+}
+
+func (s *Stack) connectAdmin(ctx context.Context) (*pgx.Conn, error) {
+	adminURL := s.DatabaseURL(s.Env.Get("POSTGRES_DB", "oversold"))
+	if err := localguard.Check(adminURL); err != nil {
+		return nil, err
+	}
+	conn, err := pgx.Connect(ctx, adminURL)
+	if err != nil {
+		return nil, fmt.Errorf("connect to postgres, run make up first: %w", err)
+	}
+	return conn, nil
+}
+
+func (s *Stack) ensureTemplate(ctx context.Context, conn *pgx.Conn, imageID string) (bool, error) {
+	tmpl := s.TemplateName()
+	var comment *string
+	err := conn.QueryRow(ctx, `select shobj_description(oid, 'pg_database') from pg_database where datname = $1`, tmpl).Scan(&comment)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows), err == nil && (comment == nil || *comment != templatePrefix+imageID):
+		if err := s.buildTemplate(ctx, conn, tmpl, imageID); err != nil {
+			return false, fmt.Errorf("build template %s: %w", tmpl, err)
+		}
+		return true, nil
+	case err != nil:
+		return false, err
+	}
+	return false, nil
 }
 
 func (s *Stack) buildTemplate(ctx context.Context, conn *pgx.Conn, tmpl, imageID string) error {

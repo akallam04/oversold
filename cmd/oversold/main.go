@@ -24,6 +24,12 @@ commands:
             report match the recomputed ones, 1 otherwise, 2 if the folder cannot be read
   export    copy a run folder's scenario, report and gzipped histories to dest
             oversold export runs/<folder> <dest>
+  expect    run every case of an expectations file on one Medusa version and
+            compare each check with what the file expects
+            oversold expect expectations/medusa.yaml [--version X] [--runs N]
+            exit 0 every expectation met, 1 one not met, 2 invalid file or bad
+            usage, 3 a run was inconclusive or the harness failed
+  versions  print the Medusa versions Oversold can run, oldest first
   version   print the version
   help      print this help
 `
@@ -46,6 +52,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return checkCmd(args[1:], stdout, stderr)
 	case "export":
 		return exportCmd(args[1:], stdout, stderr)
+	case "expect":
+		return expectCmd(args[1:], stdout, stderr)
+	case "versions":
+		return versionsCmd(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "oversold %s\n", version)
 		return 0

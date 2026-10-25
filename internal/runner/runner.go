@@ -39,37 +39,42 @@ type Options struct {
 }
 
 func Run(ctx context.Context, opts Options) int {
+	rep, _, err := RunSet(ctx, opts)
+	if err != nil {
+		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
+		return report.ExitInconclusive
+	}
+	return rep.ExitCode
+}
+
+func RunSet(ctx context.Context, opts Options) (*report.Report, string, error) {
 	sc := opts.File.Scenario
 	runs := sc.Runs
 	if opts.Runs > 0 {
 		runs = opts.Runs
 	}
 
-	fail := func(err error) int {
-		fmt.Fprintf(opts.Stderr, "oversold run: %v\n", err)
-		return report.ExitInconclusive
-	}
 	host, err := stack.CheckDocker(ctx)
 	if err != nil {
-		return fail(err)
+		return nil, "", err
 	}
 	fmt.Fprintf(opts.Stdout, "docker endpoint %s\n", host)
 	used, err := sc.ResolveVersion(opts.Version)
 	if err != nil {
-		return fail(err)
+		return nil, "", err
 	}
 	st, err := stack.New(opts.Dir, opts.Env, used)
 	if err != nil {
-		return fail(err)
+		return nil, "", err
 	}
 
 	started := time.Now().UTC()
 	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name+"-"+used)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return fail(err)
+		return nil, "", err
 	}
 	if err := os.WriteFile(filepath.Join(outDir, filepath.Base(opts.File.Path)), opts.File.Bytes, 0o644); err != nil {
-		return fail(err)
+		return nil, outDir, err
 	}
 	selected := sc.SelectedChecks()
 	fmt.Fprintf(opts.Stdout, "scenario %s: medusa %s (file says %s), %d runs, %d servers, release %s, checks %s\n", sc.Name, used, sc.Target.Version, runs, sc.Target.Servers, sc.Timing.Release, strings.Join(selected, ", "))
@@ -96,13 +101,13 @@ func Run(ctx context.Context, opts Options) int {
 		return report.Entry{File: name, History: saved}, runErr, nil
 	})
 	if err != nil {
-		return fail(err)
+		return nil, outDir, err
 	}
 
 	rep := report.Build(opts.File, entries, runs, stopped)
 	jsonPath, mdPath, err := rep.Write(outDir)
 	if err != nil {
-		return fail(err)
+		return nil, outDir, err
 	}
 	for _, c := range rep.Checks {
 		fmt.Fprintln(opts.Stdout, rep.CountLine(c))
@@ -112,7 +117,7 @@ func Run(ctx context.Context, opts Options) int {
 	}
 	fmt.Fprintf(opts.Stdout, "%d runs in %.1fs, exit code %d, report %s\n", len(entries), time.Since(started).Seconds(), rep.ExitCode, jsonPath)
 	fmt.Fprintln(opts.Stdout, mdPath)
-	return rep.ExitCode
+	return rep, outDir, nil
 }
 
 func runAll(ctx context.Context, runs int, one func(int) (report.Entry, error, error)) ([]report.Entry, string, error) {
