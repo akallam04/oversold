@@ -1,0 +1,37 @@
+schema: oversold.scenario/v1
+name: duplicate-complete-two-servers-redis-locking
+description: >
+  Control. Copy of duplicate-complete-two-servers with both servers on
+  Medusa's Redis locking provider, which Medusa recommends when more than one
+  server runs, so the cart lock is shared by both servers. Every other module
+  stays in-memory. One cart with OVS-PIECE 1, built on server 1, is completed
+  at the same moment by one action on server 1 and one on server 2. Medusa's
+  rules expect one order and one reservation for the cart, with both calls
+  either returning that order or one of them rejected.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 2
+  locking: redis
+stock:
+  WIDGET: 10
+carts:
+  main:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 1
+race:
+  - id: on-1
+    server: 1
+    do: complete
+    cart: main
+  - id: on-2
+    server: 2
+    do: complete
+    cart: main
+timing:
+  release: together
+faults: []
+runs: 30
+seed: 13

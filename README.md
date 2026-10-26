@@ -10,6 +10,8 @@ Oversold is a test harness in Go that races concurrent checkouts against local c
 
 The measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
 
+Five of those scenarios ran with Medusa's Redis locking provider: normal-checkout-two-servers-redis-locking, duplicate-complete-two-servers-redis-locking, two-carts-shared-stock-two-servers-redis-locking, last-unit-two-servers-redis-locking and counter-two-servers-redis-locking, copies of the five two-server scenarios. Every other scenario ran with Medusa's default in-memory locking.
+
 The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
 
 ## Reproduce in one command
