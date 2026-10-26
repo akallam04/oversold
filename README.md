@@ -31,8 +31,10 @@ make repro MEDUSA=2.21.2
 | normal-checkout | control for #16502 | every check passes in every run |
 | last-unit-two-servers | [#17032](https://github.com/medusajs/medusa/issues/17032) | `no_oversell` and `reserved_matches_reservations` fail in at least one run, the other checks pass in every run |
 | last-unit-one-server | control for #17032 | every check passes in every run |
+| last-unit-two-servers-redis-locking | control for #17032 with Redis locking | every check passes in every run |
 | counter-two-servers | [#17032](https://github.com/medusajs/medusa/issues/17032) | `reserved_matches_reservations` fails in at least one run, the other checks pass in every run |
 | counter-one-server | control for #17032 | every check passes in every run |
+| counter-two-servers-redis-locking | control for #17032 with Redis locking | every check passes in every run |
 
 Exit 0, or a green repro badge, means the known bugs still reproduced and the controls still passed on that version. Exit 1 means an expectation was not met, and 3 means a run was inconclusive or the harness failed, so the counts cannot be trusted. Make itself exits 2 whenever the command fails, and its last line, `make: *** [repro] Error N`, shows the code from `oversold expect`. The table, `summary.md` and every run folder are in `runs/<UTC time>-expect-<version>/`. [docs/expect-format.md](docs/expect-format.md) describes the file.
 

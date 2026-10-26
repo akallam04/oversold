@@ -25,16 +25,18 @@ func TestShippedExpectations(t *testing.T) {
 		t.Fatalf("%q", problems)
 	}
 	e := f.Expectations
-	if e.Runs != 3 || len(e.Cases) != 6 {
+	if e.Runs != 3 || len(e.Cases) != 8 {
 		t.Fatalf("runs %d, cases %d", e.Runs, len(e.Cases))
 	}
 	want := map[string]map[string]string{
-		"single-cart-over-demand": {"no_oversell": FailEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"normal-checkout":         {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"last-unit-two-servers":   {"no_oversell": FailAtLeastOnce, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"last-unit-one-server":    {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"counter-two-servers":     {"no_oversell": PassEveryRun, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"counter-one-server":      {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"single-cart-over-demand":             {"no_oversell": FailEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"normal-checkout":                     {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"last-unit-two-servers":               {"no_oversell": FailAtLeastOnce, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"last-unit-one-server":                {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"counter-two-servers":                 {"no_oversell": PassEveryRun, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"counter-one-server":                  {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"last-unit-two-servers-redis-locking": {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"counter-two-servers-redis-locking":   {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
 	}
 	for _, c := range e.Cases {
 		name := c.File.Scenario.Name
