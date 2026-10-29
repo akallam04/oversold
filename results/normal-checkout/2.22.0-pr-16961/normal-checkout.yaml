@@ -1,0 +1,30 @@
+schema: oversold.scenario/v1
+name: normal-checkout
+description: >
+  Control. One cart with OVS-PIECE 2 and OVS-TWOPACK 1 (4 WIDGET units) is
+  completed once against 10 WIDGET in stock. Medusa's rules expect one order,
+  4 units reserved, and two reservations that match the counter.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 10
+carts:
+  main:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 2
+      - sku: OVS-TWOPACK
+        qty: 1
+race:
+  - id: complete
+    server: 1
+    do: complete
+    cart: main
+timing:
+  release: sequential
+faults: []
+runs: 30
+seed: 1

@@ -1,0 +1,42 @@
+schema: oversold.scenario/v1
+name: two-carts-shared-stock
+description: >
+  Targets Medusa issue #17032: concurrent carts oversell an inventory item
+  held on more than one line. Cart a holds OVS-PIECE 5 (5 WIDGET units). Cart
+  b holds OVS-PIECE 3 and OVS-TWOPACK 2 (7 WIDGET units, on two lines). 10
+  WIDGET are in stock, so each cart fits on its own but together they need 12.
+  Both carts are on server 1 and completed together. Medusa's rules expect one
+  order and the other completion rejected, with at most 10 units promised.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 10
+carts:
+  a:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 5
+  b:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 3
+      - sku: OVS-TWOPACK
+        qty: 2
+race:
+  - id: complete-a
+    server: 1
+    do: complete
+    cart: a
+  - id: complete-b
+    server: 1
+    do: complete
+    cart: b
+timing:
+  release: together
+faults: []
+runs: 30
+seed: 7

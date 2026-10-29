@@ -12,6 +12,8 @@ The measured runs are in [results/](results/README.md): every scenario in `scena
 
 Five of those scenarios ran with Medusa's Redis locking provider: normal-checkout-two-servers-redis-locking, duplicate-complete-two-servers-redis-locking, two-carts-shared-stock-two-servers-redis-locking, last-unit-two-servers-redis-locking and counter-two-servers-redis-locking, copies of the five two-server scenarios. Every other scenario ran with Medusa's default in-memory locking.
 
+The build variant pr-16961, Medusa 2.22.0 with the unmerged community pull request [medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, ran 13 of those scenarios, 30 runs each. [results/](results/README.md#build-variant-pr-16961) puts each next to plain 2.22.0.
+
 The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
 
 ## Reproduce in one command
