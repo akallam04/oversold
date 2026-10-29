@@ -29,7 +29,7 @@ Every check in a run is `inconclusive`, with the cause as its reason, when any o
    - it has any order,
    - it has any live reservation,
    - a level's `reserved_quantity` differs from its live reservation sum, or
-   - a level's `stocked_quantity` differs from the expected stock. Expected stock is the scenario's `stock` value for that inventory item, or the seeded stock if the scenario does not set it (`WIDGET` 10, `SOLO` 1).
+   - a level's `stocked_quantity` differs from the expected stock. Expected stock is the stock in effect when the race starts: the scenario's `stock_before_race` value for that inventory item, else its `stock` value, else the seeded stock (`WIDGET` 10, `SOLO` 1). This choice of expected stock is part of the clean start, not of any check's rule, so no check's version changed with it.
 4. The after snapshot is missing data the checks need: no levels, or no `variants` entry for a variant that a counted order line uses.
 
 ## no_oversell (version 1)

@@ -150,3 +150,34 @@ func TestLockCallMismatches(t *testing.T) {
 		t.Errorf("in-memory history: %q", m)
 	}
 }
+
+func TestVariantInReport(t *testing.T) {
+	e := pass4(1)
+	e.History.Target.Variant = &history.Variant{
+		Name:        "pr-16961",
+		BaseVersion: "2.22.0",
+		Source:      history.VariantSource{PR: "https://github.com/medusajs/medusa/pull/16961", Author: "pqa-labs", State: "closed", HeadSHA: "5ac8ae437ee0b7771a945b5b30f265b76f214172"},
+		Files:       []history.VariantFile{{Path: "@medusajs/inventory/dist/services/inventory-module.js", ReplacesSHA256: "aaa", SHA256: "bbb"}},
+	}
+	e.History.Target.Servers = []history.Server{{Service: "medusa", MedusaVersion: "2.22.0", ImageID: "sha256:1", ImageInputs: "ccc"}}
+	r := Build(file(t), []Entry{e}, 1, "")
+	if r.Variant == nil || r.Variant.Name != "pr-16961" || r.Servers[0].ImageInputs != "ccc" {
+		t.Errorf("variant %+v, servers %+v", r.Variant, r.Servers)
+	}
+	md := r.Markdown()
+	for _, want := range []string{
+		"- Variant `pr-16961`: Medusa 2.22.0 with the source change of https://github.com/medusajs/medusa/pull/16961 by pqa-labs (closed, not merged), head commit `5ac8ae437ee0b7771a945b5b30f265b76f214172`\n",
+		"  - Replaces `@medusajs/inventory/dist/services/inventory-module.js`, sha256 `bbb` (was `aaa`)\n",
+		"  - Image inputs sha256 `ccc`\n",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown lacks %q:\n%s", want, md)
+		}
+	}
+	b, _ := json.Marshal(Build(file(t), []Entry{pass4(1)}, 1, ""))
+	for _, key := range []string{`"variant"`, `"image_inputs"`} {
+		if strings.Contains(string(b), key) {
+			t.Errorf("report without a variant written with %s", key)
+		}
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/akallam04/oversold/internal/report"
 	"github.com/akallam04/oversold/internal/scenario"
 	"github.com/akallam04/oversold/internal/stack"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 const SettleWait = 2 * time.Second
@@ -31,6 +32,7 @@ type Options struct {
 	File    *scenario.File
 	Runs    int
 	Version string
+	Variant string
 	OutRoot string
 	Dir     string
 	Env     envfile.Env
@@ -63,14 +65,18 @@ func RunSet(ctx context.Context, opts Options) (*report.Report, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	st, err := stack.New(opts.Dir, opts.Env, used)
+	variant, err := sc.ResolveVariant(used, opts.Variant)
+	if err != nil {
+		return nil, "", err
+	}
+	st, err := stack.New(opts.Dir, opts.Env, used, variant)
 	if err != nil {
 		return nil, "", err
 	}
 	st.Locking = sc.Target.LockingMode()
 
 	started := time.Now().UTC()
-	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name+"-"+used)
+	outDir := filepath.Join(opts.OutRoot, started.Format("20060102T150405Z")+"-"+sc.Name+"-"+st.ImageTag())
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return nil, "", err
 	}
@@ -78,7 +84,11 @@ func RunSet(ctx context.Context, opts Options) (*report.Report, string, error) {
 		return nil, outDir, err
 	}
 	selected := sc.SelectedChecks()
-	fmt.Fprintf(opts.Stdout, "scenario %s: medusa %s (file says %s), %d runs, %d servers, %s locking, release %s, checks %s\n", sc.Name, used, sc.Target.Version, runs, sc.Target.Servers, st.Locking, sc.Timing.Release, strings.Join(selected, ", "))
+	built := "medusa " + used
+	if variant != nil {
+		built += " with variant " + variant.Name
+	}
+	fmt.Fprintf(opts.Stdout, "scenario %s: %s (file says %s), %d runs, %d servers, %s locking, release %s, checks %s\n", sc.Name, built, sc.Target.Version, runs, sc.Target.Servers, st.Locking, sc.Timing.Release, strings.Join(selected, ", "))
 
 	entries, stopped, err := runAll(ctx, runs, func(i int) (report.Entry, error, error) {
 		h, masker, runErr := runOne(ctx, st, opts, runs, i)
@@ -170,11 +180,14 @@ func runOne(ctx context.Context, st *stack.Stack, opts Options, runs, index int)
 			ScenarioVersion:  sc.Target.Version,
 			Version:          st.Version,
 			TemplateDatabase: st.TemplateName(),
+			ImageInputs:      st.Inputs,
+			Variant:          historyVariant(st.Variant),
 		},
-		Start: history.Timestamp{Time: runStart.UTC()},
-		Stock: sc.Stock,
-		Carts: map[string]string{},
-		Race:  history.Race{Release: sc.Timing.Release, SettleMS: SettleWait.Milliseconds()},
+		Start:       history.Timestamp{Time: runStart.UTC()},
+		Stock:       sc.Stock,
+		StockBefore: sc.StockBefore,
+		Carts:       map[string]string{},
+		Race:        history.Race{Release: sc.Timing.Release, SettleMS: SettleWait.Milliseconds()},
 	}
 	if st.Redis() {
 		h.Target.Locking = st.Locking
@@ -208,6 +221,16 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 	for _, s := range h.Target.Servers {
 		if s.MedusaVersion != st.Version {
 			return fmt.Errorf("%s runs medusa %s, this run set uses %s", s.Service, s.MedusaVersion, st.Version)
+		}
+		if s.ImageInputs != st.Inputs {
+			return fmt.Errorf("%s runs an image with %s %q, this run set's image inputs are %s", s.Service, stack.InputsLabel, s.ImageInputs, st.Inputs)
+		}
+		if st.Variant != nil {
+			for i, f := range st.Variant.Files {
+				if i >= len(s.VariantFiles) || s.VariantFiles[i].SHA256 != f.SHA256 {
+					return fmt.Errorf("%s: %s inside the container does not have the sha256 %s that variant %s lists", s.Service, f.Path, f.SHA256, st.Variant.Name)
+				}
+			}
 		}
 	}
 	if st.Redis() {
@@ -275,6 +298,12 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		}
 	}
 
+	if len(sc.StockBefore) > 0 {
+		if err := setStock(ctx, clients[0], env, sc.StockBefore); err != nil {
+			return fmt.Errorf("set stock before the race: %w", err)
+		}
+	}
+
 	if h.Before, err = db.Snapshot(ctx, scenario.VariantSKUs()); err != nil {
 		return err
 	}
@@ -313,9 +342,33 @@ func execute(ctx context.Context, st *stack.Stack, sc *scenario.Scenario, env en
 		return err
 	}
 	if h.Race.LockCalls != nil && *h.Race.LockCalls == 0 {
-		return fmt.Errorf("redis locking: Medusa made no scripted lock calls during the race, so the servers did not lock through Redis; if %s was built before the locking option existed, remove it and run again to rebuild it", st.ImageName())
+		return errors.New("redis locking: Medusa made no scripted lock calls during the race, so the servers did not lock through Redis")
 	}
 	return nil
+}
+
+func historyVariant(v *targets.Variant) *history.Variant {
+	if v == nil {
+		return nil
+	}
+	out := &history.Variant{
+		Name:        v.Name,
+		BaseVersion: v.BaseVersion,
+		Description: v.Description,
+		Source: history.VariantSource{
+			PR:      v.Source.PR,
+			Author:  v.Source.Author,
+			State:   v.Source.State,
+			Merged:  v.Source.Merged != nil && *v.Source.Merged,
+			HeadSHA: v.Source.HeadSHA,
+			BaseSHA: v.Source.BaseSHA,
+		},
+		SourceFiles: append([]string(nil), v.SourceFiles...),
+	}
+	for _, f := range v.Files {
+		out.Files = append(out.Files, history.VariantFile{Path: f.Path, ReplacesSHA256: f.ReplacesSHA256, SHA256: f.SHA256})
+	}
+	return out
 }
 
 func setStock(ctx context.Context, c *medusa.Client, env envfile.Env, stock map[string]int) error {

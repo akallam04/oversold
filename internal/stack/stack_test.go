@@ -6,6 +6,7 @@ import (
 
 	"github.com/akallam04/oversold/internal/envfile"
 	"github.com/akallam04/oversold/internal/history"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 func TestLocalEndpoint(t *testing.T) {
@@ -49,7 +50,7 @@ func clearNameEnv(t *testing.T) {
 func TestNewPicksImageAndTemplateFromVersion(t *testing.T) {
 	clearNameEnv(t)
 	for _, v := range []string{"2.19.0", "2.21.2", "2.22.0"} {
-		s, err := New("../..", envfile.Env{"MEDUSA_VERSION": "2.21.2"}, v)
+		s, err := New("../..", envfile.Env{"MEDUSA_VERSION": "2.21.2"}, v, nil)
 		if err != nil {
 			t.Fatalf("New(%s): %v", v, err)
 		}
@@ -60,17 +61,17 @@ func TestNewPicksImageAndTemplateFromVersion(t *testing.T) {
 			t.Errorf("template = %s", s.TemplateName())
 		}
 	}
-	if _, err := New("../..", envfile.Env{}, "2.18.0"); err == nil {
+	if _, err := New("../..", envfile.Env{}, "2.18.0", nil); err == nil {
 		t.Error("a version without build files should be refused")
 	}
-	if _, err := New("../..", envfile.Env{}, "2.21.2; drop"); err == nil {
+	if _, err := New("../..", envfile.Env{}, "2.21.2; drop", nil); err == nil {
 		t.Error("a malformed version should be refused")
 	}
 }
 
 func TestNamesDefaults(t *testing.T) {
 	clearNameEnv(t)
-	s, err := New("../..", envfile.Env{}, "2.21.2")
+	s, err := New("../..", envfile.Env{}, "2.21.2", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +99,7 @@ func TestNamesOverrides(t *testing.T) {
 		"MEDUSA_PORT":           "9100",
 		"MEDUSA_2_PORT":         "9101",
 	}
-	s, err := New("../..", env, "2.22.0")
+	s, err := New("../..", env, "2.22.0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestParseCommandStatsRefusesBadInput(t *testing.T) {
 func TestDockerEnvAlwaysSetsLocking(t *testing.T) {
 	clearNameEnv(t)
 	t.Setenv("OVERSOLD_LOCKING", "redis")
-	s, err := New("../..", envfile.Env{}, "2.22.0")
+	s, err := New("../..", envfile.Env{}, "2.22.0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,5 +243,67 @@ func TestDockerEnvAlwaysSetsLocking(t *testing.T) {
 	s.Locking = "redis"
 	if !s.Redis() || last() != "redis" {
 		t.Errorf("redis locking: Redis() = %v, docker gets OVERSOLD_LOCKING=%q", s.Redis(), last())
+	}
+}
+
+func TestVariantImageAndTemplate(t *testing.T) {
+	clearNameEnv(t)
+	root, err := targets.FindRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := targets.LoadVariant(root, "medusa", "pr-16961")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := New("../..", envfile.Env{}, "2.22.0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New("../..", envfile.Env{}, "2.22.0", v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.ImageName() != "oversold-medusa:2.22.0-pr-16961" || s.TemplateName() != "medusa_template_2_22_0_pr_16961" {
+		t.Errorf("variant image %s, template %s", s.ImageName(), s.TemplateName())
+	}
+	if plain.ImageName() != "oversold-medusa:2.22.0" || plain.TemplateName() != "medusa_template_2_22_0" {
+		t.Errorf("plain image %s, template %s", plain.ImageName(), plain.TemplateName())
+	}
+	if len(s.Inputs) != 64 || len(plain.Inputs) != 64 || s.Inputs == plain.Inputs {
+		t.Errorf("inputs plain %q, variant %q", plain.Inputs, s.Inputs)
+	}
+	env := func(st *Stack) map[string]string {
+		out := map[string]string{}
+		for _, kv := range st.environ() {
+			k, val, _ := strings.Cut(kv, "=")
+			out[k] = val
+		}
+		return out
+	}
+	t.Setenv("OVERSOLD_BUILD_TARGET", "variant")
+	t.Setenv("MEDUSA_IMAGE_TAG", "elsewhere")
+	pe, ve := env(plain), env(s)
+	if pe["MEDUSA_IMAGE_TAG"] != "2.22.0" || pe["OVERSOLD_BUILD_TARGET"] != "release" || pe["OVERSOLD_VARIANT"] != "" || pe["OVERSOLD_IMAGE_INPUTS"] != plain.Inputs {
+		t.Errorf("plain env %v", pe)
+	}
+	if ve["MEDUSA_IMAGE_TAG"] != "2.22.0-pr-16961" || ve["OVERSOLD_BUILD_TARGET"] != "variant" || ve["OVERSOLD_VARIANT"] != "pr-16961" || ve["OVERSOLD_IMAGE_INPUTS"] != s.Inputs {
+		t.Errorf("variant env %v", ve)
+	}
+	if _, err := New("../..", envfile.Env{}, "2.21.2", v); err == nil || !strings.Contains(err.Error(), "built on medusa 2.22.0") {
+		t.Errorf("variant on 2.21.2: err = %v", err)
+	}
+}
+
+func TestParseSums(t *testing.T) {
+	got, err := parseSums("8e150f6b9de7bc64f431e91a803716646a782379d3cc993a31f301056d5ac919  /server/node_modules/a.js\n2af8432c719836364a143d9fe7f4ee6f9aba17062d555e2fdace47315c11c569  /server/node_modules/b.js\n")
+	if err != nil || len(got) != 2 || got["/server/node_modules/b.js"] != "2af8432c719836364a143d9fe7f4ee6f9aba17062d555e2fdace47315c11c569" {
+		t.Errorf("parseSums = %v, %v", got, err)
+	}
+	if _, err := parseSums("sha256sum: /x: No such file or directory"); err == nil {
+		t.Error("an error line should not parse")
+	}
+	if cleanLabel("<no value>") != "" || cleanLabel(" abc ") != "abc" {
+		t.Error("cleanLabel")
 	}
 }

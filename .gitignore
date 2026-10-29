@@ -6,3 +6,4 @@ bin/
 coverage.*
 cover.*
 .DS_Store
+/.cache/

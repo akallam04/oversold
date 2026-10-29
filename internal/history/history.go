@@ -206,13 +206,20 @@ type Build struct {
 }
 
 type Server struct {
-	Index         int    `json:"index"`
-	Service       string `json:"service"`
-	URL           string `json:"url"`
-	ContainerID   string `json:"container_id"`
-	ImageID       string `json:"image_id"`
-	StartedAt     string `json:"started_at"`
-	MedusaVersion string `json:"medusa_version"`
+	Index         int        `json:"index"`
+	Service       string     `json:"service"`
+	URL           string     `json:"url"`
+	ContainerID   string     `json:"container_id"`
+	ImageID       string     `json:"image_id"`
+	StartedAt     string     `json:"started_at"`
+	MedusaVersion string     `json:"medusa_version"`
+	ImageInputs   string     `json:"image_inputs,omitempty"`
+	VariantFiles  []FileHash `json:"variant_files,omitempty"`
+}
+
+type FileHash struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 type Target struct {
@@ -224,6 +231,32 @@ type Target struct {
 	TemplateDatabase string   `json:"template_database"`
 	Locking          string   `json:"locking,omitempty"`
 	RedisVersion     string   `json:"redis_version,omitempty"`
+	ImageInputs      string   `json:"image_inputs,omitempty"`
+	Variant          *Variant `json:"variant,omitempty"`
+}
+
+type Variant struct {
+	Name        string        `json:"name"`
+	BaseVersion string        `json:"base_version"`
+	Description string        `json:"description"`
+	Source      VariantSource `json:"source"`
+	SourceFiles []string      `json:"source_files"`
+	Files       []VariantFile `json:"files"`
+}
+
+type VariantSource struct {
+	PR      string `json:"pr"`
+	Author  string `json:"author"`
+	State   string `json:"state"`
+	Merged  bool   `json:"merged"`
+	HeadSHA string `json:"head_sha"`
+	BaseSHA string `json:"base_sha"`
+}
+
+type VariantFile struct {
+	Path           string `json:"path"`
+	ReplacesSHA256 string `json:"replaces_sha256"`
+	SHA256         string `json:"sha256"`
 }
 
 func (t Target) LockingMode() string {
@@ -296,6 +329,7 @@ type History struct {
 	End          Timestamp         `json:"end"`
 	Reset        *Reset            `json:"reset,omitempty"`
 	Stock        map[string]int    `json:"stock,omitempty"`
+	StockBefore  map[string]int    `json:"stock_before_race,omitempty"`
 	Carts        map[string]string `json:"carts,omitempty"`
 	Race         Race              `json:"race"`
 	Operations   []Operation       `json:"operations"`

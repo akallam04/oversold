@@ -42,6 +42,7 @@ type Server struct {
 	Service       string `json:"service"`
 	MedusaVersion string `json:"medusa_version"`
 	ImageID       string `json:"image_id"`
+	ImageInputs   string `json:"image_inputs,omitempty"`
 }
 
 type CheckCount struct {
@@ -79,6 +80,7 @@ type Report struct {
 	PostgresVersion string            `json:"postgres_version"`
 	Locking         string            `json:"locking,omitempty"`
 	RedisVersions   []string          `json:"redis_versions,omitempty"`
+	Variant         *history.Variant  `json:"variant,omitempty"`
 	RunsPlanned     int               `json:"runs_planned"`
 	RunsRecorded    int               `json:"runs_recorded"`
 	StoppedEarly    string            `json:"stopped_early,omitempty"`
@@ -120,11 +122,14 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 			r.Oversold = append(r.Oversold, h.Oversold)
 		}
 		for _, s := range h.Target.Servers {
-			key := s.Service + "/" + s.MedusaVersion + "/" + s.ImageID
+			key := s.Service + "/" + s.MedusaVersion + "/" + s.ImageID + "/" + s.ImageInputs
 			if !servers[key] {
 				servers[key] = true
-				r.Servers = append(r.Servers, Server{Service: s.Service, MedusaVersion: s.MedusaVersion, ImageID: s.ImageID})
+				r.Servers = append(r.Servers, Server{Service: s.Service, MedusaVersion: s.MedusaVersion, ImageID: s.ImageID, ImageInputs: s.ImageInputs})
 			}
+		}
+		if r.Variant == nil && h.Target.Variant != nil {
+			r.Variant = h.Target.Variant
 		}
 		if r.PostgresVersion == "" {
 			r.PostgresVersion = h.Target.PostgresVersion
@@ -220,8 +225,21 @@ func (r *Report) Markdown() string {
 		checkedState = "with uncommitted changes"
 	}
 	fmt.Fprintf(&b, "- Verdicts computed by Oversold commit: `%s` (%s)\n", r.CheckedBy.Commit, checkedState)
+	if v := r.Variant; v != nil {
+		merged := "not merged"
+		if v.Source.Merged {
+			merged = "merged"
+		}
+		fmt.Fprintf(&b, "- Variant `%s`: Medusa %s with the source change of %s by %s (%s, %s), head commit `%s`\n", v.Name, v.BaseVersion, v.Source.PR, v.Source.Author, v.Source.State, merged, v.Source.HeadSHA)
+		for _, f := range v.Files {
+			fmt.Fprintf(&b, "  - Replaces `%s`, sha256 `%s` (was `%s`)\n", f.Path, f.SHA256, f.ReplacesSHA256)
+		}
+	}
 	for _, s := range r.Servers {
 		fmt.Fprintf(&b, "- Server `%s`: Medusa %s, image `%s`\n", s.Service, s.MedusaVersion, s.ImageID)
+		if s.ImageInputs != "" {
+			fmt.Fprintf(&b, "  - Image inputs sha256 `%s`\n", s.ImageInputs)
+		}
 	}
 	if r.PostgresVersion != "" {
 		fmt.Fprintf(&b, "- Postgres %s\n", r.PostgresVersion)
@@ -553,6 +571,7 @@ func reportDiffs(saved, want *Report) []string {
 	field("postgres_version", saved.PostgresVersion, want.PostgresVersion)
 	field("locking", saved.Locking, want.Locking)
 	field("redis_versions", saved.RedisVersions, want.RedisVersions)
+	field("variant", saved.Variant, want.Variant)
 	field("runs_planned", saved.RunsPlanned, want.RunsPlanned)
 	field("runs_recorded", saved.RunsRecorded, want.RunsRecorded)
 	field("stopped_early", saved.StoppedEarly, want.StoppedEarly)

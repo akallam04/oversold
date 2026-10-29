@@ -51,10 +51,14 @@ Measured on one Apple Silicon Mac with Docker Desktop: the first `make repro` fo
 
 - Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>` by default) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. Medusa 2.22.0 needs Node 22.22 or later. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
 - The versions Oversold can run are the folders under `targets/medusa/versions/`. A folder counts only when its `package.json` pins every `@medusajs` package to exactly that version and its `package-lock.json` matches. Adding a version needs no code change.
+- Every Medusa image Oversold builds carries an `oversold.image-inputs` label: the SHA-256 of the files it is built from (the Dockerfile, `targets/medusa/app/`, the version folder, and the variant folder for a variant). Before a run set uses an image, Oversold computes the hash again and rebuilds the image when the label is missing or different. Every history records the hash, and a server whose image label differs makes the run a harness error.
+- A build variant is a Medusa image built from one pinned version plus the source change of one pull request, so a proposed fix runs through the same scenarios as the release it patches. A variant is a folder under `targets/medusa/variants/` with a `variant.yaml` that records the pull request, its head commit, its author and state, the source files it changes, and the SHA-256 of each compiled file it replaces in the image, plus those compiled files. The image build copies them over the published files and needs no access to GitHub. A scenario's `target.variant` or `oversold run --variant X` picks a variant, which runs as image `<prefix>:<version>-<variant>` with its own template database. Each history records the variant and the SHA-256 of every replaced file read inside each running container. [docs/variant-format.md](docs/variant-format.md) has the format.
+- The compiled files are made from source, never by hand. `scripts/build-variant.sh <variant>` fetches Medusa at the version's tag and the pull request's commits, applies the pull request's change to its non-test source files, and compiles those packages the way Medusa's package build does, with the TypeScript and tool versions Medusa's `yarn.lock` resolves at that tag. It first compiles the same packages unpatched and stops unless every published `.js` file comes out byte-identical, then compares the patched files with the committed ones and their hashes.
+- One variant exists: `pr-16961`, Medusa 2.22.0 with [medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, which sums the demand of entries that share an inventory item when stock is checked, for [#16502](https://github.com/medusajs/medusa/issues/16502). It is a community pull request that was closed without being merged. It replaces `@medusajs/inventory/dist/services/inventory-module.js` and `@medusajs/core-flows/dist/cart/steps/confirm-inventory.js`.
 - Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001 by default, shares the same database and starts only for scenarios that ask for two servers.
 - Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine.
 - A scenario with `target.locking: redis` runs its servers with Medusa's Redis locking provider instead, set up the way Medusa's docs show, against a Redis 7.4.11 container in the same Compose project. Medusa recommends that provider when more than one server runs. Only locking changes: the event bus, cache and workflow engine stay in-memory, and migrate and seed keep the default config, so each version still has one template database. Redis starts only for those scenarios, has no published port, keeps nothing on disk and is emptied before every run. Each of those histories records the Redis version and the number of scripted lock calls Medusa made during the race, and a run with none is a harness error. Without the field, Medusa runs with the same config as before the option existed.
-- Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock before a run.
+- Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock: after the reset, and for scenarios with `stock_before_race`, again once the carts are prepared.
 
 The seed creates one US region, one stock location and these SKUs:
 
@@ -70,6 +74,7 @@ A scenario is a YAML file that sets stock, prepares carts and races requests aga
 
 - [docs/scenario-format.md](docs/scenario-format.md): every scenario field and rule, with an example.
 - [docs/expect-format.md](docs/expect-format.md): the expectations file that `oversold expect` and `make repro` run.
+- [docs/variant-format.md](docs/variant-format.md): the build variant folder, `variant.yaml`, and how its files are made and checked.
 - [docs/history-format.md](docs/history-format.md): every history field, the outcome rules and what gets masked.
 - [docs/checks.md](docs/checks.md): the exact rule behind each check, its version, and when a verdict is inconclusive.
 - [scenarios/medusa/](scenarios/medusa/): the scenarios that ship with Oversold.
@@ -123,25 +128,28 @@ make up
 ./bin/oversold run scenarios/medusa/normal-checkout.yaml
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
 ./bin/oversold run scenarios/medusa/last-unit-two-servers.yaml --runs 3 --version 2.19.0
+./bin/oversold run scenarios/medusa/two-carts-shared-stock.yaml --runs 3 --version 2.22.0 --variant pr-16961
 ./bin/oversold check runs/<folder>
 ./bin/oversold check --verify runs/<folder>
 ./bin/oversold export runs/<folder> <dest>
 ./bin/oversold versions
+./bin/oversold variant pr-16961
 ./bin/oversold expect expectations/medusa.yaml --version 2.21.2 --runs 5
 make repro
+scripts/build-variant.sh pr-16961
 make images
 make psql DB=medusa
 make logs
 make down
 ```
 
-`oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>-<version>/`. It builds the Medusa image and template database for a version the first time that version runs. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
+`oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>-<version>/`, with `-<variant>` after the version for a variant. It builds the Medusa image and template database for a version the first time that version runs, and again whenever the files the image is built from change. `--runs` must be from 1 to 1000, in `oversold run` and `oversold expect` alike. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
 
 `oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker. It reads plain and gzipped histories. `oversold check --verify runs/<folder>` writes nothing and exits 0 only when the stored verdicts and the report match the recomputed ones, and 1 when anything differs, whatever the verdicts are. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
-`oversold versions` prints the Medusa versions Oversold can run, oldest first. `oversold expect <file>` runs every case of an expectations file on one version, `--version X` or the newest, and exits 0 when every expectation was met, 1 when one was not, 2 for an invalid file or bad usage, and 3 when a run was inconclusive or the harness failed.
+`oversold versions` prints the Medusa versions Oversold can run, oldest first. `oversold variant` lists the build variants, and `oversold variant <name>` checks one and prints its fields. `oversold expect <file>` runs every case of an expectations file on one version, `--version X` or the newest, and exits 0 when every expectation was met, 1 when one was not, 2 for an invalid file or bad usage, and 3 when a run was inconclusive or the harness failed.
 
 To add a Medusa version, run `scripts/add-medusa-version.sh X.Y.Z` and commit the folder it creates. The script copies the newest folder under `targets/medusa/versions/`, sets every `@medusajs` package to exactly X.Y.Z, copies `engines.node` from `@medusajs/medusa@X.Y.Z`, stops if the Node version in `targets/medusa/Dockerfile` does not satisfy it, and makes the lockfile inside that Node image. It needs Docker, Go and network access to npm.
 
@@ -152,7 +160,7 @@ Oversold only runs against local copies it starts in Docker, never live stores o
 ## Project layout
 
 ```
-cmd/oversold/                  CLI entry point: validate, run, check, export, expect, versions
+cmd/oversold/                  CLI entry point: validate, run, check, export, expect, versions, variant
 internal/scenario/             scenario format v1, strict decoding and validation
 internal/expect/               expectation format v1, oversold expect summaries and exit codes
 internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts
@@ -160,7 +168,7 @@ internal/checks/               the four checks, pure functions over one history
 internal/report/               report.json and report.md, exit codes
 internal/history/              history format v1, outcome rules and masking
 internal/stack/                Docker Compose control, Docker names and ports, template database reset, target facts
-internal/targets/              reads and checks the pinned versions under targets/
+internal/targets/              reads and checks the pinned versions and variants under targets/, image input hashes
 internal/medusa/               Store API and Admin API client
 internal/dbstate/              read-only Postgres snapshot of stock, reservations and orders
 internal/localguard/           refuses URLs that are not localhost
@@ -168,13 +176,16 @@ internal/envfile/              reads .env
 scenarios/medusa/              shipped scenarios
 expectations/                  known bugs next to their controls, for oversold expect and make repro
 results/                       measured run sets: scenario, report and gzipped histories
-docs/                          scenario format, expectation format, history format and check rules
-targets/medusa/Dockerfile      builds and runs one pinned Medusa version
+docs/                          scenario, expectation, variant and history formats, and check rules
+targets/medusa/Dockerfile      builds and runs one pinned Medusa version, and its variants
 targets/medusa/app/            shared medusa-config.ts, tsconfig and seed script
 targets/medusa/versions/       one pinned package.json and lockfile per Medusa version
+targets/medusa/variants/       one folder per build variant: variant.yaml and the compiled files it replaces
 targets/medusa/db/             creates the medusa database in Postgres
 scripts/check-tools.sh         checks that required tools are installed
 scripts/add-medusa-version.sh  adds a pinned Medusa version folder with its lockfile
+scripts/build-variant.sh       rebuilds a variant's files from its pull request and checks them
+scripts/variant-compile.js     compiles Medusa packages inside the Medusa image, used by build-variant.sh
 .githooks/                     pre-commit and commit-msg hooks
 .github/workflows/             ci: vet, test, build, compose check, secret scan, results verify. repro: known bugs and controls
 compose.yaml                   Postgres, Medusa migrate, seed, two servers and Redis

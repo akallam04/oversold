@@ -305,3 +305,25 @@ func TestVerdictsAreStableAcrossTime(t *testing.T) {
 		t.Error("verdicts changed between two evaluations of the same history")
 	}
 }
+
+func TestCleanStartUsesStockBeforeRace(t *testing.T) {
+	h := load(t, "single-cart-over-demand")
+	h.Stock = map[string]int{"WIDGET": 10}
+	expect(t, verdicts(t, h), allResults(history.Inconclusive), "WIDGET stocked 6 but scenario and seed give 10")
+
+	h.StockBefore = map[string]int{"WIDGET": 6}
+	got := verdicts(t, h)
+	expect(t, got, map[string]history.Result{
+		"no_oversell":                   history.Fail,
+		"reserved_matches_reservations": history.Pass,
+		"one_order_per_cart":            history.Pass,
+		"no_orphaned_orders":            history.Pass,
+	}, "")
+	if reason := got["no_oversell"].Reason; !strings.Contains(reason, "WIDGET live reservations 8 exceed stocked 6") {
+		t.Errorf("no_oversell reason %q", reason)
+	}
+
+	h.Stock = map[string]int{"WIDGET": 6}
+	h.StockBefore = map[string]int{"WIDGET": 10}
+	expect(t, verdicts(t, h), allResults(history.Inconclusive), "WIDGET stocked 6 but scenario and seed give 10")
+}

@@ -221,6 +221,9 @@ func cleanStart(h *history.History) []string {
 }
 
 func expectedStock(h *history.History, sku string) (int, bool) {
+	if v, ok := h.StockBefore[sku]; ok {
+		return v, true
+	}
 	if v, ok := h.Stock[sku]; ok {
 		return v, true
 	}

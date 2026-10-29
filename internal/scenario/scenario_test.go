@@ -403,3 +403,84 @@ func TestResolveVersion(t *testing.T) {
 		t.Error("unbuilt version should be refused")
 	}
 }
+
+func TestStockBeforeRace(t *testing.T) {
+	withField := func(field string) string {
+		return strings.Replace(minimal(""), "carts:\n", field+"carts:\n", 1)
+	}
+	s, problems := Parse([]byte(withField("stock:\n  WIDGET: 10\nstock_before_race:\n  WIDGET: 6\n")))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %q", problems)
+	}
+	if s.StockBefore["WIDGET"] != 6 || s.Stock["WIDGET"] != 10 {
+		t.Errorf("stock %v, stock_before_race %v", s.Stock, s.StockBefore)
+	}
+	if s, _ := Parse([]byte(minimal(""))); s.StockBefore != nil {
+		t.Errorf("left out: stock_before_race = %v", s.StockBefore)
+	}
+	bad := []struct {
+		name, field, want string
+	}{
+		{"no value", "stock_before_race:\n", "stock_before_race: has no value"},
+		{"empty map", "stock_before_race: {}\n", "stock_before_race: an empty map is not allowed"},
+		{"unknown sku", "stock_before_race:\n  GADGET: 1\n", "stock_before_race.GADGET: unknown inventory SKU"},
+		{"negative", "stock_before_race:\n  WIDGET: -1\n", "stock_before_race.WIDGET: quantity -1 out of range"},
+		{"too large", "stock_before_race:\n  SOLO: 1000001\n", "stock_before_race.SOLO: quantity 1000001 out of range"},
+		{"list", "stock_before_race: [6]\n", "cannot unmarshal"},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name, func(t *testing.T) {
+			_, problems := Parse([]byte(withField(tt.field)))
+			if len(problems) != 1 || !strings.Contains(problems[0], tt.want) {
+				t.Errorf("want one problem containing %q, got %q", tt.want, problems)
+			}
+		})
+	}
+}
+
+func TestVariantField(t *testing.T) {
+	withVariant := func(version, line string) string {
+		src := strings.Replace(minimal(""), "  version: 2.21.2\n", "  version: "+version+"\n", 1)
+		return strings.Replace(src, "  servers: 1\n", "  servers: 1\n"+line, 1)
+	}
+	s, problems := Parse([]byte(withVariant("2.22.0", "  variant: pr-16961\n")))
+	if len(problems) != 0 {
+		t.Fatalf("problems: %q", problems)
+	}
+	if s.Target.Variant != "pr-16961" {
+		t.Errorf("variant = %q", s.Target.Variant)
+	}
+	v, err := s.ResolveVariant("2.22.0", "")
+	if err != nil || v == nil || v.Name != "pr-16961" || v.Source.Author != "pqa-labs" {
+		t.Fatalf("ResolveVariant = %+v, %v", v, err)
+	}
+	if _, err := s.ResolveVariant("2.21.2", ""); err == nil || !strings.Contains(err.Error(), "variant pr-16961 is built on medusa 2.22.0, this run uses 2.21.2; add --version 2.22.0") {
+		t.Errorf("version override: err = %v", err)
+	}
+	plain, _ := Parse([]byte(minimal("")))
+	if v, err := plain.ResolveVariant("2.21.2", ""); v != nil || err != nil {
+		t.Errorf("no variant: %+v, %v", v, err)
+	}
+	if v, err := plain.ResolveVariant("2.22.0", "pr-16961"); err != nil || v == nil {
+		t.Errorf("--variant pr-16961: %+v, %v", v, err)
+	}
+	if _, err := plain.ResolveVariant("2.22.0", "pr-1"); err == nil || !strings.Contains(err.Error(), "--variant pr-1: ") {
+		t.Errorf("--variant pr-1: err = %v", err)
+	}
+	bad := []struct {
+		name, version, line, want string
+	}{
+		{"no value", "2.22.0", "  variant:\n", "target.variant: has no value"},
+		{"unknown", "2.22.0", "  variant: pr-1\n", "target.variant: "},
+		{"other base", "2.21.2", "  variant: pr-16961\n", "target.variant: pr-16961 is built on medusa 2.22.0, target.version is 2.21.2"},
+		{"not kebab", "2.22.0", "  variant: PR_16961\n", "must be kebab-case"},
+	}
+	for _, tt := range bad {
+		t.Run(tt.name, func(t *testing.T) {
+			_, problems := Parse([]byte(withVariant(tt.version, tt.line)))
+			if len(problems) != 1 || !strings.Contains(problems[0], tt.want) {
+				t.Errorf("want one problem containing %q, got %q", tt.want, problems)
+			}
+		})
+	}
+}

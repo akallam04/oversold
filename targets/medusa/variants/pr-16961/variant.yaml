@@ -1,0 +1,21 @@
+schema: oversold.variant/v1
+name: pr-16961
+base_version: 2.22.0
+description: "Medusa 2.22.0 with the source change of medusajs/medusa#16961 by pqa-labs, which checks the summed demand of entries that share an inventory item"
+source:
+  pr: https://github.com/medusajs/medusa/pull/16961
+  author: pqa-labs
+  state: closed
+  merged: false
+  head_sha: 5ac8ae437ee0b7771a945b5b30f265b76f214172
+  base_sha: 340da77f722a5a53c48bf35276f96ec261a65736
+source_files:
+  - packages/modules/inventory/src/services/inventory-module.ts
+  - packages/core/core-flows/src/cart/steps/confirm-inventory.ts
+files:
+  - path: "@medusajs/inventory/dist/services/inventory-module.js"
+    replaces_sha256: 6d2643ef94e7ffe20fb2b4a35f8f1de503ad4429c85c64cc4262ceae2a776c58
+    sha256: 8e150f6b9de7bc64f431e91a803716646a782379d3cc993a31f301056d5ac919
+  - path: "@medusajs/core-flows/dist/cart/steps/confirm-inventory.js"
+    replaces_sha256: 01a7cf229b6854a7840207c6ba62234bbdedc651adfd50276536e06d6e46134d
+    sha256: 2af8432c719836364a143d9fe7f4ee6f9aba17062d555e2fdace47315c11c569

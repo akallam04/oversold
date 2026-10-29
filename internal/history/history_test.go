@@ -197,7 +197,19 @@ func TestHistoryWithoutLockingFieldsReadsAsInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"locking"`, `"redis_version"`, `"lock_calls"`, `"redis_command_stats"`} {
+	if h.Target.ImageInputs != "" || h.Target.Variant != nil || h.StockBefore != nil || h.Target.Servers[0].ImageInputs != "" || h.Target.Servers[0].VariantFiles != nil {
+		t.Errorf("old history decoded with image input, variant or stock_before_race fields")
+	}
+	target, err := json.Marshal(h.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"image_inputs"`, `"variant"`, `"variant_files"`} {
+		if bytes.Contains(target, []byte(key)) {
+			t.Errorf("history target without a variant written with %s", key)
+		}
+	}
+	for _, key := range []string{`"locking"`, `"redis_version"`, `"lock_calls"`, `"redis_command_stats"`, `"stock_before_race"`} {
 		if bytes.Contains(b, []byte(key)) {
 			t.Errorf("in-memory history written with %s", key)
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/akallam04/oversold/internal/report"
 	"github.com/akallam04/oversold/internal/runner"
 	"github.com/akallam04/oversold/internal/scenario"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 func validateCmd(args []string, stdout, stderr io.Writer) int {
@@ -38,12 +39,23 @@ func validateCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func flagSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
 func runCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	runs := fs.Int("runs", 0, "number of runs, overrides the scenario")
 	outRoot := fs.String("out", "runs", "directory for run folders")
 	version := fs.String("version", "", "medusa version to run, overrides target.version in the file")
+	variant := fs.String("variant", "", "build variant to run, overrides target.variant in the file")
 
 	var file string
 	rest := args
@@ -64,11 +76,15 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if file == "" {
-		fmt.Fprintln(stderr, "usage: oversold run <scenario.yaml> [--runs N] [--version X]")
+		fmt.Fprintln(stderr, "usage: oversold run <scenario.yaml> [--runs N] [--version X] [--variant NAME]")
 		return 2
 	}
-	if *runs != 0 && (*runs < scenario.MinRuns || *runs > scenario.MaxRuns) {
+	if flagSet(fs, "runs") && (*runs < scenario.MinRuns || *runs > scenario.MaxRuns) {
 		fmt.Fprintf(stderr, "oversold run: --runs %d out of range %d to %d\n", *runs, scenario.MinRuns, scenario.MaxRuns)
+		return 2
+	}
+	if flagSet(fs, "variant") && !targets.ValidVariantName(*variant) {
+		fmt.Fprintf(stderr, "oversold run: --variant %q must be kebab-case\n", *variant)
 		return 2
 	}
 
@@ -80,7 +96,12 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if _, err := f.Scenario.ResolveVersion(*version); err != nil {
+	used, err := f.Scenario.ResolveVersion(*version)
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold run: %v\n", err)
+		return report.ExitUsage
+	}
+	if _, err := f.Scenario.ResolveVariant(used, *variant); err != nil {
 		fmt.Fprintf(stderr, "oversold run: %v\n", err)
 		return report.ExitUsage
 	}
@@ -96,6 +117,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		File:    f,
 		Runs:    *runs,
 		Version: *version,
+		Variant: *variant,
 		OutRoot: *outRoot,
 		Dir:     dir,
 		Env:     envfile.Load(".env"),

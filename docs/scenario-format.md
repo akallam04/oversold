@@ -6,6 +6,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 ./bin/oversold validate scenarios/medusa/duplicate-complete.yaml
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 10
 ./bin/oversold run scenarios/medusa/duplicate-complete.yaml --runs 3 --version 2.19.0
+./bin/oversold run scenarios/medusa/two-carts-shared-stock.yaml --runs 3 --version 2.22.0 --variant pr-16961
 ```
 
 ## Decoding rules
@@ -13,7 +14,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 - The file holds exactly one YAML document.
 - Decoding is strict. A field that is not listed below is an error, at any level.
 - `oversold validate` prints every problem it finds, one per line, and exits 2 if there is at least one. It exits 0 when the file is valid.
-- `oversold run` validates first and exits 2 on an invalid file without touching Docker.
+- `oversold run` validates first and exits 2 on an invalid file without touching Docker. It also exits 2 for `--runs` below 1 or above 1000, and for a `--variant` that does not exist or is built on another version than the one the run uses.
 
 ## Fields
 
@@ -25,8 +26,10 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `target.engine` | string | yes | Only `medusa`. |
 | `target.version` | string | yes | A Medusa version Oversold builds an image for: one with a folder under `targets/medusa/versions/` whose `package.json` pins every `@medusajs` package to exactly that version, with a matching `package-lock.json`. In this repository those are `2.19.0`, `2.21.2` and `2.22.0`. Each version has its own image (`oversold-medusa:<version>` by default, see `OVERSOLD_IMAGE_PREFIX` in the README) and its own template database. `oversold run --version X` runs the file against version X instead, and the history and report record both. |
 | `target.servers` | integer | yes | `1` or `2`. With 2, a second Medusa server (`medusa-2` on 127.0.0.1:9001 by default, `MEDUSA_2_PORT`) runs on the same database. |
+| `target.variant` | string | no | A build variant under `targets/medusa/variants/`, see [variant-format.md](variant-format.md). Its `base_version` must equal `target.version`. `oversold run --variant X` runs the file with variant X instead, and the version the run uses must then be X's base version. Without a variant, the run uses the plain image for its version. The field with no value is an error. |
 | `target.locking` | string | no | `in-memory` or `redis`. Left out, it is `in-memory`: Medusa's default in-memory locking provider, which only locks inside one server process. With `redis`, every Medusa server in the run uses Medusa's Redis locking provider (`@medusajs/medusa/locking-redis`) as the default Locking Module provider, against the `redis` service in `compose.yaml`. Medusa recommends that provider when more than one server runs. The event bus, cache and workflow engine stay in-memory either way. An empty value, or the field with no value, is an error. |
 | `stock` | map | no | Inventory SKU to stocked quantity, from 0 to 1000000. Keys are `WIDGET` or `SOLO`. Applied after the reset through the Admin API. Items not listed keep their seeded stock. |
+| `stock_before_race` | map | no | Inventory SKU to stocked quantity, from 0 to 1000000, with the same keys as `stock`. Applied through the Admin API after every cart is prepared and before the before-race snapshot, so a cart can be built against one stock level and completed against another. An empty map, or the field with no value, is an error. When it is set, the clean start in [checks.md](checks.md) expects these values for the SKUs it lists. |
 | `carts` | map | yes | Cart name (kebab-case) to a cart. At least one cart. |
 | `carts.<name>.server` | integer | yes | The server the cart is built on, from 1 to `target.servers`. |
 | `carts.<name>.count` | integer | no | From 1 to 100, default 1. With a count of N above 1, the scenario gets N identical carts named `<name>-1` to `<name>-N`, all on the cart's server. With 1, the cart keeps its name. |
@@ -71,16 +74,19 @@ A scenario chooses which checks apply to it. Checks take no parameters, so a sce
 
 ## What one run does
 
-1. Stop the Medusa servers. For a `redis` scenario, start Redis if it is not running and empty it with `FLUSHALL`, so no lock key carries over from the run before.
+1. Make sure the Medusa image for the run set exists and was built from the current inputs, see "Images" below. Stop the Medusa servers. For a `redis` scenario, start Redis if it is not running and empty it with `FLUSHALL`, so no lock key carries over from the run before.
 2. Drop the `medusa` database and create it again from the template database for the target version (for example `medusa_template_2_21_2`). If the template is missing, or was built from a different image, Oversold builds it first by running `medusa db:migrate` and the seed once. Migrate and seed always use the default in-memory config, so one template serves both locking modes.
 3. Start the servers the scenario needs and wait for `GET /health` on each. The restart clears Medusa's in-memory locks, cache and workflow state.
 4. Set stock through the Admin API.
 5. Prepare each cart on its server: lines, email, US address, shipping method, payment collection and a `pp_system_default` payment session.
+   If the scenario sets `stock_before_race`, set that stock through the Admin API once every cart is prepared.
 6. Take a database snapshot. For a `redis` scenario, also read Redis's `INFO commandstats`.
 7. Open one HTTP connection per race action with a `GET /health` warm-up, then release the actions.
 8. Wait 2 seconds. This settle time is fixed in code.
 9. For a `redis` scenario, read `INFO commandstats` again and count the `EVAL` and `EVALSHA` calls made since step 6. Medusa's Redis provider takes, renews and releases every lock with a Lua script, so this is the number of scripted lock calls the servers made during the race. A count of zero means the servers did not lock through Redis, and the run is a harness error.
 10. Take a second database snapshot, compute the verdict of every chosen check, and write the history.
+
+Before the race, Oversold also reads each server's image inputs label and, for a variant, the SHA-256 of every replaced file inside each running container. A label that differs from the run set's inputs, or a replaced file that differs from `variant.yaml`, is a harness error.
 
 Any setup call that does not end `ok` is a harness error. That run is written with every check `inconclusive`, and the next run starts. `oversold run` stops early only after 3 harness errors in a row, and the report says so.
 
@@ -94,6 +100,10 @@ Exit codes:
 | 1 | At least one check failed in at least one run. |
 | 2 | Invalid scenario or bad usage. |
 | 3 | Nothing failed, but at least one run was inconclusive, or the harness could not start. |
+
+## Images
+
+Each version has one image, `<prefix>:<version>`, and each variant one more, `<prefix>:<version>-<variant>`. Oversold labels every image it builds with `oversold.image-inputs`: the SHA-256 of a list of every file the image is built from, one `<sha256>  <path>` line per file sorted by path, with paths relative to `targets/medusa/`. The files are `Dockerfile`, `.dockerignore`, everything under `app/`, everything under `versions/<version>/`, and for a variant everything under `variants/<variant>/`, leaving out what `.dockerignore` leaves out (`node_modules`, `.medusa` and `.env`). Before a run set uses an image, Oversold computes that hash again and rebuilds the image if its label is missing or different. A rebuilt image also gets a new template database, since each template records the image it was built from. Images built by `make images` or `make up` have an empty label, so Oversold rebuilds them once before its first run on them, which mostly reuses Docker's layer cache.
 
 ## Example
 

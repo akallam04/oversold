@@ -3,7 +3,7 @@
 `oversold run` writes one JSON file per run:
 
 ```
-runs/<UTC start time>-<scenario name>-<medusa version used>/
+runs/<UTC start time>-<scenario name>-<medusa version used>[-<variant>]/
   <scenario file>.yaml     exact copy of the scenario that was run
   run-001.json             history of run 1
   run-002.json             history of run 2
@@ -44,6 +44,7 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | `start`, `end` | Wall-clock start and end of the run, UTC. |
 | `reset` | Database reset timing, see below. |
 | `stock` | Stock the scenario set through the Admin API. |
+| `stock_before_race` | Stock the scenario set after preparing the carts and before the before-race snapshot. Left out when the scenario does not set it. |
 | `carts` | Scenario cart name to Medusa cart id. |
 | `race` | How the race was released, see below. |
 | `operations` | Every HTTP call in the run, in the order they started. |
@@ -65,10 +66,14 @@ Request headers are not recorded, so the `x-publishable-api-key` and `Authorizat
 | `servers[].image_id` | Image id the container runs. |
 | `servers[].started_at` | Container start time reported by Docker. The reset restarts the container, so this changes every run. |
 | `servers[].medusa_version` | `@medusajs/medusa` version read from inside the container. |
+| `servers[].image_inputs` | The container's `oversold.image-inputs` label, see "Images" in [scenario-format.md](scenario-format.md). It must equal `image_inputs`, or the run is a harness error. Histories written before the label existed leave it out. |
+| `servers[].variant_files[]` | Only for a variant: `path` and `sha256` of each replaced file, read with `sha256sum` inside the running container. Each must equal `variant.files[].sha256`, or the run is a harness error. |
 | `postgres_version` | `server_version` reported by Postgres. |
 | `template_database` | Template the `medusa` database was copied from. |
 | `locking` | `redis` when the scenario set `target.locking: redis`. Left out for `in-memory`, the default, so a history without it ran with Medusa's in-memory locking. |
 | `redis_version` | `redis_version` from `INFO server` in the running Redis container. Only for `redis` runs. |
+| `image_inputs` | SHA-256 of the files the run set's image is built from, computed when the run set started. Histories written before the label existed leave it out. |
+| `variant` | Only for a variant run: the variant as `variant.yaml` describes it, see [variant-format.md](variant-format.md). `name`, `base_version`, `description`, `source.pr`, `source.author`, `source.state`, `source.merged`, `source.head_sha`, `source.base_sha`, `source_files`, and `files[]` with `path`, `replaces_sha256` and `sha256`. Left out when the run used the plain image for its version. |
 
 Oversold refuses to start a run if any server reports a Medusa version other than `scenario_version`.
 
@@ -158,4 +163,4 @@ Quantities are written as JSON numbers exactly as Postgres returns them.
 
 ## Report
 
-`report.json` and `report.md` hold the scenario name and file hash, the Medusa version in the file and the versions used, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the locking mode and Redis versions (`locking` and `redis_versions` in `report.json`, left out for in-memory), each run's `lock_calls`, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.
+`report.json` and `report.md` hold the scenario name and file hash, the Medusa version in the file and the versions used, the Oversold commits that ran it and the commit that computed the verdicts, the Medusa version and image per server, the Postgres version, the locking mode and Redis versions (`locking` and `redis_versions` in `report.json`, left out for in-memory), the variant and its source (`variant`, left out without one), each server's image inputs label, each run's `lock_calls`, the number of runs planned and recorded, whether the run stopped early, each check's fail, pass and inconclusive counts as k of n, the exit code, and every run's verdicts with a link to its history file.

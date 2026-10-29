@@ -85,6 +85,7 @@ type Scenario struct {
 	Description string          `yaml:"description"`
 	Target      Target          `yaml:"target"`
 	Stock       map[string]int  `yaml:"stock"`
+	StockBefore map[string]int  `yaml:"stock_before_race"`
 	Carts       map[string]Cart `yaml:"carts"`
 	Race        []Action        `yaml:"race"`
 	Timing      Timing          `yaml:"timing"`
@@ -93,10 +94,13 @@ type Scenario struct {
 	Seed        *int64          `yaml:"seed"`
 	Checks      *[]string       `yaml:"checks"`
 
-	CartOrder    []string `yaml:"-"`
-	checksIsNil  bool
-	lockingIsNil bool
-	lockingSet   bool
+	CartOrder        []string `yaml:"-"`
+	checksIsNil      bool
+	lockingIsNil     bool
+	lockingSet       bool
+	variantIsNil     bool
+	variantSet       bool
+	stockBeforeIsNil bool
 }
 
 type Target struct {
@@ -104,6 +108,7 @@ type Target struct {
 	Version string `yaml:"version"`
 	Servers int    `yaml:"servers"`
 	Locking string `yaml:"locking"`
+	Variant string `yaml:"variant"`
 }
 
 func (t Target) LockingMode() string {
@@ -208,6 +213,39 @@ func (s *Scenario) ResolveVersion(override string) (string, error) {
 	return override, nil
 }
 
+func (s *Scenario) ResolveVariant(version, override string) (*targets.Variant, error) {
+	name := s.Target.Variant
+	if override != "" {
+		name = override
+	}
+	if name == "" {
+		return nil, nil
+	}
+	root, err := targets.FindRoot()
+	if err != nil {
+		return nil, err
+	}
+	v, err := targets.LoadVariant(root, s.Target.Engine, name)
+	if err != nil {
+		if override != "" {
+			return nil, fmt.Errorf("--variant %s: %w", override, err)
+		}
+		return nil, err
+	}
+	if v.BaseVersion != version {
+		return nil, fmt.Errorf("variant %s is built on %s %s, this run uses %s; add --version %s", v.Name, s.Target.Engine, v.BaseVersion, version, v.BaseVersion)
+	}
+	return v, nil
+}
+
+func rootOrEmpty() string {
+	root, err := targets.FindRoot()
+	if err != nil {
+		return ""
+	}
+	return root
+}
+
 func Versions(engine string) ([]string, error) {
 	root, err := targets.FindRoot()
 	if err != nil {
@@ -287,6 +325,11 @@ func Parse(b []byte) (*Scenario, []string) {
 		s.lockingIsNil = isNull(n)
 		s.lockingSet = n.Kind == yaml.ScalarNode
 	}
+	if n := fieldNode(b, "target", "variant"); n != nil {
+		s.variantIsNil = isNull(n)
+		s.variantSet = n.Kind == yaml.ScalarNode
+	}
+	s.stockBeforeIsNil = nullField(b, "stock_before_race")
 	problems = append(problems, s.validate()...)
 	return s, problems
 }
@@ -402,6 +445,17 @@ func (s *Scenario) validate() []string {
 		add("target.locking: got %q, want %s", s.Target.Locking, strings.Join(targets.LockingModes, " or "))
 	}
 
+	switch {
+	case s.variantIsNil:
+		add("target.variant: has no value; name a folder under targets/%s/variants/, or leave the field out", s.Target.Engine)
+	case s.variantSet && engineOK:
+		if v, err := targets.LoadVariant(rootOrEmpty(), s.Target.Engine, s.Target.Variant); err != nil {
+			add("target.variant: %v", err)
+		} else if s.Target.Version != "" && v.BaseVersion != s.Target.Version {
+			add("target.variant: %s is built on %s %s, target.version is %s", v.Name, s.Target.Engine, v.BaseVersion, s.Target.Version)
+		}
+	}
+
 	for _, sku := range sortedKeys(s.Stock) {
 		qty := s.Stock[sku]
 		if !slices.Contains(InventorySKUs, sku) {
@@ -409,6 +463,20 @@ func (s *Scenario) validate() []string {
 		}
 		if qty < 0 || qty > MaxStock {
 			add("stock.%s: quantity %d out of range 0 to %d", sku, qty, MaxStock)
+		}
+	}
+	if s.stockBeforeIsNil {
+		add("stock_before_race: has no value; map inventory SKUs to stock, or leave the field out")
+	} else if s.StockBefore != nil && len(s.StockBefore) == 0 {
+		add("stock_before_race: an empty map is not allowed; map inventory SKUs to stock, or leave the field out")
+	}
+	for _, sku := range sortedKeys(s.StockBefore) {
+		qty := s.StockBefore[sku]
+		if !slices.Contains(InventorySKUs, sku) {
+			add("stock_before_race.%s: unknown inventory SKU, want one of %s", sku, strings.Join(InventorySKUs, ", "))
+		}
+		if qty < 0 || qty > MaxStock {
+			add("stock_before_race.%s: quantity %d out of range 0 to %d", sku, qty, MaxStock)
 		}
 	}
 

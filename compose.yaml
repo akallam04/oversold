@@ -10,7 +10,7 @@ x-medusa-env: &medusa-env
   MEDUSA_DISABLE_TELEMETRY: "true"
 
 x-medusa: &medusa
-  image: ${OVERSOLD_IMAGE_PREFIX:-oversold-medusa}:${MEDUSA_VERSION:?set MEDUSA_VERSION in .env}
+  image: ${OVERSOLD_IMAGE_PREFIX:-oversold-medusa}:${MEDUSA_IMAGE_TAG:-${MEDUSA_VERSION:?set MEDUSA_VERSION in .env}}
   pull_policy: never
   environment: *medusa-env
 
@@ -63,8 +63,12 @@ services:
     pull_policy: build
     build:
       context: targets/medusa
+      target: ${OVERSOLD_BUILD_TARGET:-release}
       args:
         MEDUSA_VERSION: ${MEDUSA_VERSION:?set MEDUSA_VERSION in .env}
+        VARIANT: ${OVERSOLD_VARIANT:-}
+      labels:
+        oversold.image-inputs: ${OVERSOLD_IMAGE_INPUTS:-}
     command: ["node_modules/.bin/medusa", "db:migrate"]
     restart: "no"
     depends_on:

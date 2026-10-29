@@ -18,6 +18,7 @@ import (
 	"github.com/akallam04/oversold/internal/runner"
 	"github.com/akallam04/oversold/internal/scenario"
 	"github.com/akallam04/oversold/internal/stack"
+	"github.com/akallam04/oversold/internal/targets"
 )
 
 func versionsCmd(args []string, stdout, stderr io.Writer) int {
@@ -32,6 +33,69 @@ func versionsCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	for _, v := range versions {
 		fmt.Fprintln(stdout, v)
+	}
+	return 0
+}
+
+func variantCmd(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
+		fmt.Fprintln(stderr, "usage: oversold variant [name]")
+		return expect.ExitUsage
+	}
+	root, err := targets.FindRoot()
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold variant: %v\n", err)
+		return expect.ExitUsage
+	}
+	if len(args) == 0 {
+		names, err := targets.Variants(root, "medusa")
+		if err != nil {
+			fmt.Fprintf(stderr, "oversold variant: %v\n", err)
+			return expect.ExitUsage
+		}
+		code := 0
+		for _, name := range names {
+			v, err := targets.LoadVariant(root, "medusa", name)
+			if err != nil {
+				fmt.Fprintf(stderr, "oversold variant: %v\n", err)
+				code = expect.ExitUsage
+				continue
+			}
+			fmt.Fprintf(stdout, "%s  medusa %s  %s by %s\n", v.Name, v.BaseVersion, v.Source.PR, v.Source.Author)
+		}
+		return code
+	}
+	v, problems := targets.ReadVariant(root, "medusa", args[0])
+	if v != nil {
+		names, err := stack.NamesFrom(envfile.Load(".env"))
+		if err != nil {
+			fmt.Fprintf(stderr, "oversold variant: %v\n", err)
+			return expect.ExitUsage
+		}
+		dash := func(s string) string {
+			if s == "" {
+				return "-"
+			}
+			return s
+		}
+		merged := "-"
+		if v.Source.Merged != nil {
+			merged = fmt.Sprint(*v.Source.Merged)
+		}
+		fmt.Fprintf(stdout, "name %s\nbase_version %s\nbase_image %s:%s\npr %s\nauthor %s\nstate %s\nmerged %s\nhead_sha %s\nbase_sha %s\n",
+			dash(v.Name), dash(v.BaseVersion), names.ImagePrefix, dash(v.BaseVersion), dash(v.Source.PR), dash(v.Source.Author), dash(v.Source.State), merged, dash(v.Source.HeadSHA), dash(v.Source.BaseSHA))
+		for _, f := range v.SourceFiles {
+			fmt.Fprintf(stdout, "source_file %s\n", f)
+		}
+		for _, f := range v.Files {
+			fmt.Fprintf(stdout, "file %s %s %s\n", dash(f.Path), dash(f.SHA256), dash(f.ReplacesSHA256))
+		}
+	}
+	for _, p := range problems {
+		fmt.Fprintf(stderr, "oversold variant %s: %s\n", args[0], p)
+	}
+	if len(problems) > 0 {
+		return expect.ExitUsage
 	}
 	return 0
 }
@@ -60,7 +124,7 @@ func expectCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: oversold expect <expectations.yaml> [--version X] [--runs N]")
 		return expect.ExitUsage
 	}
-	if *runs != 0 && (*runs < expect.MinRuns || *runs > expect.MaxRuns) {
+	if flagSet(fs, "runs") && (*runs < expect.MinRuns || *runs > expect.MaxRuns) {
 		fmt.Fprintf(stderr, "oversold expect: --runs %d out of range %d to %d\n", *runs, expect.MinRuns, expect.MaxRuns)
 		return expect.ExitUsage
 	}
@@ -86,7 +150,7 @@ func expectCmd(args []string, stdout, stderr io.Writer) int {
 		return expect.ExitUsage
 	}
 	perCase := f.Expectations.Runs
-	if *runs != 0 {
+	if flagSet(fs, "runs") {
 		perCase = *runs
 	}
 
@@ -186,7 +250,7 @@ func prepare(ctx context.Context, dir string, env envfile.Env, version string, s
 	if _, err := stack.CheckDocker(ctx); err != nil {
 		return fail(err)
 	}
-	st, err := stack.New(dir, env, version)
+	st, err := stack.New(dir, env, version, nil)
 	if err != nil {
 		return fail(err)
 	}

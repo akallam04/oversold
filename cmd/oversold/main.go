@@ -17,7 +17,7 @@ commands:
   validate  check a scenario file and print every problem
             oversold validate scenarios/medusa/normal-checkout.yaml
   run       run a scenario, each run on a fresh database, then check every run
-            oversold run scenarios/medusa/normal-checkout.yaml [--runs N] [--version X]
+            oversold run scenarios/medusa/normal-checkout.yaml [--runs N] [--version X] [--variant NAME]
   check     recompute every verdict and the report from a run folder, no Docker needed
             oversold check runs/<folder>
             with --verify, write nothing and exit 0 only if the stored verdicts and
@@ -30,6 +30,8 @@ commands:
             exit 0 every expectation met, 1 one not met, 2 invalid file or bad
             usage, 3 a run was inconclusive or the harness failed
   versions  print the Medusa versions Oversold can run, oldest first
+  variant   list the build variants, or check one and print its fields
+            oversold variant [name]
   version   print the version
   help      print this help
 `
@@ -56,6 +58,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return expectCmd(args[1:], stdout, stderr)
 	case "versions":
 		return versionsCmd(args[1:], stdout, stderr)
+	case "variant":
+		return variantCmd(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "oversold %s\n", version)
 		return 0

@@ -28,6 +28,8 @@ const (
 	templatePrefix = "oversold template image="
 	appDatabase    = "medusa"
 
+	InputsLabel = "oversold.image-inputs"
+
 	DefaultProject      = "oversold"
 	DefaultImagePrefix  = "oversold-medusa"
 	DefaultPostgresPort = "55432"
@@ -135,9 +137,11 @@ type Stack struct {
 	Version string
 	Names   Names
 	Locking string
+	Variant *targets.Variant
+	Inputs  string
 }
 
-func New(dir string, env envfile.Env, version string) (*Stack, error) {
+func New(dir string, env envfile.Env, version string, variant *targets.Variant) (*Stack, error) {
 	if _, err := os.Stat(dir + "/compose.yaml"); err != nil {
 		return nil, fmt.Errorf("compose.yaml not found in %s, run oversold from the repository root", dir)
 	}
@@ -148,7 +152,29 @@ func New(dir string, env envfile.Env, version string) (*Stack, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Stack{Dir: dir, Env: env, Version: version, Names: names, Locking: targets.LockingInMemory}, nil
+	variantName := ""
+	if variant != nil {
+		if variant.BaseVersion != version {
+			return nil, fmt.Errorf("variant %s is built on medusa %s, not %s", variant.Name, variant.BaseVersion, version)
+		}
+		variantName = variant.Name
+	}
+	inputs, _, err := targets.InputsHash(dir, "medusa", version, variantName)
+	if err != nil {
+		return nil, fmt.Errorf("hash image inputs: %w", err)
+	}
+	return &Stack{Dir: dir, Env: env, Version: version, Names: names, Locking: targets.LockingInMemory, Variant: variant, Inputs: inputs}, nil
+}
+
+func (s *Stack) base() (*Stack, error) {
+	return New(s.Dir, s.Env, s.Version, nil)
+}
+
+func (s *Stack) ImageTag() string {
+	if s.Variant == nil {
+		return s.Version
+	}
+	return s.Variant.Tag()
 }
 
 func (s *Stack) Redis() bool {
@@ -167,11 +193,11 @@ func (s *Stack) Servers(n int) []Server {
 }
 
 func (s *Stack) TemplateName() string {
-	return "medusa_template_" + strings.ReplaceAll(s.Version, ".", "_")
+	return "medusa_template_" + strings.NewReplacer(".", "_", "-", "_").Replace(s.ImageTag())
 }
 
 func (s *Stack) ImageName() string {
-	return s.Names.ImagePrefix + ":" + s.Version
+	return s.Names.ImagePrefix + ":" + s.ImageTag()
 }
 
 func (s *Stack) DatabaseURL(db string) string {
@@ -203,7 +229,18 @@ func (s *Stack) docker(ctx context.Context, args ...string) (string, error) {
 }
 
 func (s *Stack) environ() []string {
-	return append(append(os.Environ(), "MEDUSA_VERSION="+s.Version, "OVERSOLD_LOCKING="+s.Locking), s.Names.Environ()...)
+	target, variant := "release", ""
+	if s.Variant != nil {
+		target, variant = "variant", s.Variant.Name
+	}
+	return append(append(os.Environ(),
+		"MEDUSA_VERSION="+s.Version,
+		"MEDUSA_IMAGE_TAG="+s.ImageTag(),
+		"OVERSOLD_BUILD_TARGET="+target,
+		"OVERSOLD_VARIANT="+variant,
+		"OVERSOLD_IMAGE_INPUTS="+s.Inputs,
+		"OVERSOLD_LOCKING="+s.Locking,
+	), s.Names.Environ()...)
 }
 
 func (s *Stack) compose(ctx context.Context, args ...string) (string, error) {
@@ -219,7 +256,25 @@ func lastLines(s string, n int) string {
 }
 
 func (s *Stack) ImageID(ctx context.Context) (string, error) {
-	return s.docker(ctx, "image", "inspect", "--format", "{{.Id}}", s.ImageName())
+	id, _, err := s.imageInfo(ctx)
+	return id, err
+}
+
+func (s *Stack) imageInfo(ctx context.Context) (string, string, error) {
+	out, err := s.docker(ctx, "image", "inspect", "--format", `{{.Id}} {{index .Config.Labels "`+InputsLabel+`"}}`, s.ImageName())
+	if err != nil {
+		return "", "", err
+	}
+	id, label, _ := strings.Cut(out, " ")
+	return id, cleanLabel(label), nil
+}
+
+func cleanLabel(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "<no value>" {
+		return ""
+	}
+	return v
 }
 
 type ResetResult struct {
@@ -408,17 +463,66 @@ func (s *Stack) Prepare(ctx context.Context) (PrepareResult, error) {
 }
 
 func (s *Stack) ensureImage(ctx context.Context) (string, bool, error) {
-	imageID, err := s.ImageID(ctx)
-	if err == nil {
+	imageID, label, err := s.imageInfo(ctx)
+	if err == nil && label == s.Inputs {
 		return imageID, false, nil
+	}
+	if s.Variant != nil {
+		base, err := s.base()
+		if err != nil {
+			return "", false, err
+		}
+		if _, _, err := base.ensureImage(ctx); err != nil {
+			return "", false, err
+		}
+		if err := base.checkReplaced(ctx, s.Variant); err != nil {
+			return "", false, err
+		}
 	}
 	if _, err := s.compose(ctx, "build", "medusa-migrate"); err != nil {
 		return "", false, fmt.Errorf("build medusa image %s: %w", s.ImageName(), err)
 	}
-	if imageID, err = s.ImageID(ctx); err != nil {
+	imageID, label, err = s.imageInfo(ctx)
+	if err != nil {
 		return "", true, fmt.Errorf("medusa image %s not found after build: %w", s.ImageName(), err)
 	}
+	if label != s.Inputs {
+		return "", true, fmt.Errorf("medusa image %s has %s label %q after build, want %s", s.ImageName(), InputsLabel, label, s.Inputs)
+	}
 	return imageID, true, nil
+}
+
+func (s *Stack) checkReplaced(ctx context.Context, v *targets.Variant) error {
+	paths := make([]string, len(v.Files))
+	for i, f := range v.Files {
+		paths[i] = "/server/node_modules/" + f.Path
+	}
+	out, err := s.docker(ctx, append([]string{"run", "--rm", "--entrypoint", "sha256sum", s.ImageName()}, paths...)...)
+	if err != nil {
+		return fmt.Errorf("read the files variant %s replaces in %s: %w", v.Name, s.ImageName(), err)
+	}
+	got, err := parseSums(out)
+	if err != nil {
+		return err
+	}
+	for i, f := range v.Files {
+		if got[paths[i]] != f.ReplacesSHA256 {
+			return fmt.Errorf("variant %s replaces %s, which has sha256 %s in %s, variant.yaml expects %s", v.Name, f.Path, got[paths[i]], s.ImageName(), f.ReplacesSHA256)
+		}
+	}
+	return nil
+}
+
+func parseSums(out string) (map[string]string, error) {
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		sum, file, ok := strings.Cut(strings.TrimSpace(line), "  ")
+		if !ok || len(sum) != 64 {
+			return nil, fmt.Errorf("unexpected sha256sum line %q", line)
+		}
+		got[file] = sum
+	}
+	return got, nil
 }
 
 func (s *Stack) connectAdmin(ctx context.Context) (*pgx.Conn, error) {
@@ -525,24 +629,46 @@ func (s *Stack) Facts(ctx context.Context, servers int) ([]history.Server, error
 		if id == "" {
 			return nil, fmt.Errorf("%s has no running container", srv.Service)
 		}
-		inspect, err := s.docker(ctx, "inspect", "--format", "{{.Image}} {{.State.StartedAt}}", id)
+		inspect, err := s.docker(ctx, "inspect", "--format", `{{.Image}} {{.State.StartedAt}} {{index .Config.Labels "`+InputsLabel+`"}}`, id)
 		if err != nil {
 			return nil, err
 		}
-		image, startedAt, _ := strings.Cut(inspect, " ")
+		fields := strings.SplitN(inspect, " ", 3)
+		for len(fields) < 3 {
+			fields = append(fields, "")
+		}
 		version, err := s.docker(ctx, "exec", id, "node", "-p", `require("@medusajs/medusa/package.json").version`)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, history.Server{
+		server := history.Server{
 			Index:         srv.Index,
 			Service:       srv.Service,
 			URL:           srv.URL,
 			ContainerID:   id,
-			ImageID:       image,
-			StartedAt:     startedAt,
+			ImageID:       fields[0],
+			StartedAt:     fields[1],
 			MedusaVersion: version,
-		})
+			ImageInputs:   cleanLabel(fields[2]),
+		}
+		if s.Variant != nil {
+			paths := make([]string, len(s.Variant.Files))
+			for i, f := range s.Variant.Files {
+				paths[i] = "/server/node_modules/" + f.Path
+			}
+			sums, err := s.docker(ctx, append([]string{"exec", id, "sha256sum"}, paths...)...)
+			if err != nil {
+				return nil, err
+			}
+			got, err := parseSums(sums)
+			if err != nil {
+				return nil, err
+			}
+			for i, f := range s.Variant.Files {
+				server.VariantFiles = append(server.VariantFiles, history.FileHash{Path: f.Path, SHA256: got[paths[i]]})
+			}
+		}
+		out = append(out, server)
 	}
 	return out, nil
 }

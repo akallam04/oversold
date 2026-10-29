@@ -34,6 +34,17 @@ func TestRun(t *testing.T) {
 		{name: "expect bad runs", args: []string{"expect", "../../expectations/medusa.yaml", "--runs", "0", "--runs", "1001"}, wantCode: 2, wantStderr: "--runs 1001 out of range 1 to 1000"},
 		{name: "expect unbuilt version", args: []string{"expect", "../../expectations/medusa.yaml", "--version", "2.18.0"}, wantCode: 2, wantStderr: "--version 2.18.0: medusa versions Oversold builds are 2.19.0, 2.21.2, 2.22.0"},
 		{name: "expect extra args", args: []string{"expect", "../../expectations/medusa.yaml", "more"}, wantCode: 2, wantStderr: "unexpected arguments"},
+		{name: "run zero runs", args: []string{"run", "../../internal/scenario/testdata/good.yaml", "--runs", "0"}, wantCode: 2, wantStderr: "--runs 0 out of range 1 to 1000"},
+		{name: "run negative runs", args: []string{"run", "../../internal/scenario/testdata/good.yaml", "--runs", "-3"}, wantCode: 2, wantStderr: "--runs -3 out of range 1 to 1000"},
+		{name: "expect zero runs", args: []string{"expect", "../../expectations/medusa.yaml", "--runs", "0"}, wantCode: 2, wantStderr: "--runs 0 out of range 1 to 1000"},
+		{name: "expect negative runs", args: []string{"expect", "../../expectations/medusa.yaml", "--runs=-1"}, wantCode: 2, wantStderr: "--runs -1 out of range 1 to 1000"},
+		{name: "run bad variant name", args: []string{"run", "../../internal/scenario/testdata/good.yaml", "--variant", "PR_1"}, wantCode: 2, wantStderr: `--variant "PR_1" must be kebab-case`},
+		{name: "run unknown variant", args: []string{"run", "../../internal/scenario/testdata/good.yaml", "--version", "2.22.0", "--variant", "pr-1"}, wantCode: 2, wantStderr: "--variant pr-1: "},
+		{name: "run variant on other version", args: []string{"run", "../../internal/scenario/testdata/good.yaml", "--variant", "pr-16961"}, wantCode: 2, wantStderr: "variant pr-16961 is built on medusa 2.22.0, this run uses 2.21.2; add --version 2.22.0"},
+		{name: "variant list", args: []string{"variant"}, wantCode: 0, wantStdout: "pr-16961  medusa 2.22.0  https://github.com/medusajs/medusa/pull/16961 by pqa-labs\n"},
+		{name: "variant show", args: []string{"variant", "pr-16961"}, wantCode: 0, wantStdout: "head_sha 5ac8ae437ee0b7771a945b5b30f265b76f214172\n"},
+		{name: "variant unknown", args: []string{"variant", "pr-1"}, wantCode: 2, wantStderr: "has no variant pr-1"},
+		{name: "variant extra args", args: []string{"variant", "a", "b"}, wantCode: 2, wantStderr: "usage: oversold variant"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
