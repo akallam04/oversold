@@ -27,14 +27,19 @@ env-check:
 		exit 1; \
 	fi
 
-images: env-check
-	@for v in $$(ls targets/medusa/versions); do \
-		echo "building medusa $$v"; \
-		MEDUSA_VERSION=$$v docker compose build medusa-migrate || exit 1; \
+images: env-check build
+	@for v in $$(./bin/oversold versions); do \
+		inputs=$$(./bin/oversold image-inputs --version $$v) || exit 1; \
+		echo "building medusa $$v, image inputs $$inputs"; \
+		MEDUSA_VERSION=$$v MEDUSA_IMAGE_TAG=$$v OVERSOLD_BUILD_TARGET=release OVERSOLD_VARIANT= OVERSOLD_IMAGE_INPUTS=$$inputs \
+			docker compose build medusa-migrate || exit 1; \
 	done
 
-up: env-check
-	docker compose up -d --build --wait medusa
+up: env-check build
+	@inputs=$$(./bin/oversold image-inputs) || exit 1; \
+	echo "docker compose up -d --build --wait medusa, image inputs $$inputs"; \
+	MEDUSA_IMAGE_TAG= OVERSOLD_BUILD_TARGET=release OVERSOLD_VARIANT= OVERSOLD_IMAGE_INPUTS=$$inputs \
+		docker compose up -d --build --wait medusa
 
 repro: env-check build
 	docker compose up -d --wait postgres

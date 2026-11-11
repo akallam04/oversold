@@ -100,6 +100,66 @@ func variantCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func imageInputsCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("image-inputs", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	version := fs.String("version", "", "medusa version, default MEDUSA_VERSION from the shell or .env")
+	variant := fs.String("variant", "", "build variant, default none")
+	files := fs.Bool("files", false, "print the list of files the hash is taken over instead of the hash")
+	if err := fs.Parse(args); err != nil {
+		return expect.ExitUsage
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintln(stderr, "usage: oversold image-inputs [--version X] [--variant NAME] [--files]")
+		return expect.ExitUsage
+	}
+	root, err := targets.FindRoot()
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold image-inputs: %v\n", err)
+		return expect.ExitUsage
+	}
+	used := *version
+	if used == "" {
+		used = envfile.Load(filepath.Join(root, ".env")).Get("MEDUSA_VERSION", "")
+	}
+	if used == "" {
+		fmt.Fprintln(stderr, "oversold image-inputs: no --version, and MEDUSA_VERSION is not set in the shell or .env")
+		return expect.ExitUsage
+	}
+	if err := targets.Check(root, "medusa", used); err != nil {
+		fmt.Fprintf(stderr, "oversold image-inputs: %v\n", err)
+		return expect.ExitUsage
+	}
+	if flagSet(fs, "variant") {
+		if !targets.ValidVariantName(*variant) {
+			fmt.Fprintf(stderr, "oversold image-inputs: --variant %q must be kebab-case\n", *variant)
+			return expect.ExitUsage
+		}
+		v, err := targets.LoadVariant(root, "medusa", *variant)
+		if err != nil {
+			fmt.Fprintf(stderr, "oversold image-inputs: --variant %s: %v\n", *variant, err)
+			return expect.ExitUsage
+		}
+		if v.BaseVersion != used {
+			fmt.Fprintf(stderr, "oversold image-inputs: variant %s is built on medusa %s, not %s\n", v.Name, v.BaseVersion, used)
+			return expect.ExitUsage
+		}
+	}
+	hash, lines, err := targets.InputsHash(root, "medusa", used, *variant)
+	if err != nil {
+		fmt.Fprintf(stderr, "oversold image-inputs: %v\n", err)
+		return expect.ExitUsage
+	}
+	if *files {
+		for _, line := range lines {
+			fmt.Fprintln(stdout, line)
+		}
+		return 0
+	}
+	fmt.Fprintln(stdout, hash)
+	return 0
+}
+
 func expectCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("expect", flag.ContinueOnError)
 	fs.SetOutput(stderr)

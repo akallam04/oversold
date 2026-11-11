@@ -123,7 +123,7 @@ These `.env` keys set the Docker names and the local ports. Compose and `oversol
 
 To run a second copy of Oversold next to the first, give its `.env` a different project name, image prefix and ports. The two copies then share no containers, images, networks, volumes or ports.
 
-`make images` builds one image per version under `targets/medusa/versions/`. `make up` builds the image for `MEDUSA_VERSION` in `.env` if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 (`MEDUSA_PORT`) and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
+`make images` builds one image per version under `targets/medusa/versions/`. Both it and `make up` label the images they build with `oversold.image-inputs`, the same hash `oversold run` computes and `oversold image-inputs` prints, so `oversold run` uses those images without rebuilding them. `make up` builds the image for `MEDUSA_VERSION` in `.env` if needed, starts Postgres, runs `medusa db:migrate` once, seeds the store, starts Medusa on 127.0.0.1:9000 (`MEDUSA_PORT`) and waits until `GET /health` passes. `make down` removes the containers and all data, so every `make up` starts from a clean seed.
 
 ```sh
 make up
@@ -137,6 +137,7 @@ make up
 ./bin/oversold export runs/<folder> <dest>
 ./bin/oversold versions
 ./bin/oversold variant pr-16961
+./bin/oversold image-inputs --version 2.22.0 --variant pr-16961
 ./bin/oversold expect expectations/medusa.yaml --version 2.21.2 --runs 5
 make repro
 scripts/build-variant.sh pr-16961
@@ -152,7 +153,7 @@ make down
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
-`oversold versions` prints the Medusa versions Oversold can run, oldest first. `oversold variant` lists the build variants, and `oversold variant <name>` checks one and prints its fields. `oversold expect <file>` runs every case of an expectations file on one version, `--version X` or the newest, and exits 0 when every expectation was met, 1 when one was not, 2 for an invalid file or bad usage, and 3 when a run was inconclusive or the harness failed.
+`oversold versions` prints the Medusa versions Oversold can run, oldest first. `oversold variant` lists the build variants, and `oversold variant <name>` checks one and prints its fields. `oversold image-inputs` prints the `oversold.image-inputs` label value for one image, for `--version X` or `MEDUSA_VERSION` and an optional `--variant NAME`, and with `--files` the list of files it is the SHA-256 of. `oversold expect <file>` runs every case of an expectations file on one version, `--version X` or the newest, and exits 0 when every expectation was met, 1 when one was not, 2 for an invalid file or bad usage, and 3 when a run was inconclusive or the harness failed.
 
 To add a Medusa version, run `scripts/add-medusa-version.sh X.Y.Z` and commit the folder it creates. The script copies the newest folder under `targets/medusa/versions/`, sets every `@medusajs` package to exactly X.Y.Z, copies `engines.node` from `@medusajs/medusa@X.Y.Z`, stops if the Node version in `targets/medusa/Dockerfile` does not satisfy it, and makes the lockfile inside that Node image. It needs Docker, Go and network access to npm.
 
@@ -163,7 +164,7 @@ Oversold only runs against local copies it starts in Docker, never live stores o
 ## Project layout
 
 ```
-cmd/oversold/                  CLI entry point: validate, run, check, export, expect, versions, variant
+cmd/oversold/                  CLI entry point: validate, run, check, export, expect, versions, variant, image-inputs
 internal/scenario/             scenario format v1, strict decoding and validation
 internal/expect/               expectation format v1, oversold expect summaries and exit codes
 internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts

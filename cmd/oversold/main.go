@@ -32,6 +32,10 @@ commands:
   versions  print the Medusa versions Oversold can run, oldest first
   variant   list the build variants, or check one and print its fields
             oversold variant [name]
+  image-inputs
+            print the oversold.image-inputs label value for one image: the
+            SHA-256 of the files it is built from
+            oversold image-inputs [--version X] [--variant NAME] [--files]
   version   print the version
   help      print this help
 `
@@ -60,6 +64,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return versionsCmd(args[1:], stdout, stderr)
 	case "variant":
 		return variantCmd(args[1:], stdout, stderr)
+	case "image-inputs":
+		return imageInputsCmd(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "oversold %s\n", version)
 		return 0
