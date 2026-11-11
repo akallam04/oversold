@@ -23,6 +23,8 @@ const VariantSchema = "oversold.variant/v1"
 
 const MaxVariantDescription = 200
 
+const VariantsNotice = "NOTICE"
+
 var (
 	variantName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	githubLogin = regexp.MustCompile(`^[A-Za-z0-9](-?[A-Za-z0-9]){0,38}$`)
@@ -62,6 +64,10 @@ func ValidVariantName(name string) bool {
 
 func VariantDir(root, engine, name string) string {
 	return filepath.Join(root, "targets", engine, "variants", name)
+}
+
+func NoticePath(root, engine string) string {
+	return filepath.Join(root, "targets", engine, "variants", VariantsNotice)
 }
 
 func Variants(root, engine string) ([]string, error) {
@@ -219,6 +225,10 @@ func (v *Variant) validate(root, engine, name string) []string {
 		case got != f.SHA256:
 			add("files[%d]: files/%s has sha256 %s, variant.yaml says %s", i, f.Path, got, f.SHA256)
 		}
+	}
+
+	if info, err := os.Stat(NoticePath(root, engine)); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		add("targets/%s/variants/%s is missing: it holds the copyright and license notice that covers every variant's files/", engine, VariantsNotice)
 	}
 
 	dir := VariantDir(root, engine, name)

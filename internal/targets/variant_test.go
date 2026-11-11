@@ -55,6 +55,9 @@ func writeVariant(t *testing.T, yaml string) string {
 	if err := os.WriteFile(filepath.Join(dir, "variant.yaml"), []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(NoticePath(root, "medusa"), []byte("license notice\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return root
 }
 
@@ -123,11 +126,73 @@ func TestVariantIsStrict(t *testing.T) {
 	if _, err := LoadVariant(root, "medusa", "pr-7"); err == nil || !strings.Contains(err.Error(), "files/@medusajs/cart/dist/b.js is not listed") {
 		t.Errorf("unlisted file: err = %v", err)
 	}
+	names, err := Variants(root, "medusa")
+	if err != nil || len(names) != 1 || names[0] != "pr-7" {
+		t.Errorf("Variants = %q, %v, want only pr-7 next to the notice file", names, err)
+	}
 	if _, err := LoadVariant(root, "medusa", "pr-9"); err == nil || !strings.Contains(err.Error(), "has no variant pr-9") {
 		t.Errorf("missing variant: err = %v", err)
 	}
 	if _, err := LoadVariant(root, "medusa", "../pr-7"); err == nil || !strings.Contains(err.Error(), "must be kebab-case") {
 		t.Errorf("bad name: err = %v", err)
+	}
+}
+
+func TestVariantNeedsTheNotice(t *testing.T) {
+	const want = "targets/medusa/variants/NOTICE is missing"
+	root := writeVariant(t, goodVariantYAML())
+	notice := NoticePath(root, "medusa")
+	if err := os.WriteFile(notice, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadVariant(root, "medusa", "pr-7"); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("empty notice: err = %v", err)
+	}
+	if err := os.Remove(notice); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadVariant(root, "medusa", "pr-7"); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("no notice: err = %v", err)
+	}
+	if err := os.Mkdir(notice, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadVariant(root, "medusa", "pr-7"); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("notice is a folder: err = %v", err)
+	}
+
+	root = writeVariant(t, goodVariantYAML())
+	inside := filepath.Join(VariantDir(root, "medusa", "pr-7"), "NOTICE")
+	if err := os.WriteFile(inside, []byte("license notice\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadVariant(root, "medusa", "pr-7"); err == nil || !strings.Contains(err.Error(), "NOTICE: only variant.yaml and files/ belong in a variant folder") {
+		t.Errorf("notice inside the variant folder: err = %v", err)
+	}
+}
+
+func TestShippedNotice(t *testing.T) {
+	root, err := FindRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(NoticePath(root, "medusa"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := string(b)
+	for _, want := range []string{
+		"targets/medusa/variants/*/files/",
+		"https://github.com/medusajs/medusa",
+		"The MIT License (MIT)",
+		"Copyright (c) 2021 Medusajs",
+		"Permission is hereby granted, free of charge, to any person obtaining a copy",
+		"The above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.",
+		"THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND",
+	} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("notice lacks %q", want)
+		}
 	}
 }
 

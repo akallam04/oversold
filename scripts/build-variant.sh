@@ -64,6 +64,28 @@ git -C "$cache" cat-file -e "$parent^{commit}"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+notice=targets/medusa/variants/NOTICE
+git -C "$cache" show "v$base:LICENSE" > "$work/LICENSE"
+[ -s "$work/LICENSE" ] || { echo "$repo has no LICENSE at v$base" >&2; exit 1; }
+if ! awk 'FNR == NR { want = want $0 "\n"; next } { have = have $0 "\n" } END { exit index(have, want) ? 0 : 1 }' "$work/LICENSE" "$notice"; then
+	echo "$notice does not hold the full LICENSE text of $repo at v$base" >&2
+	exit 1
+fi
+echo "ok $notice holds the LICENSE text of $repo at v$base"
+if git -C "$cache" cat-file -e "v$base:ENTERPRISE-LICENSE.md" 2>/dev/null; then
+	git -C "$cache" show "v$base:ENTERPRISE-LICENSE.md" | sed -n 's/^- `\(.*\)`$/\1/p' > "$work/enterprise.paths"
+	[ -s "$work/enterprise.paths" ] || { echo "could not read the list of paths in ENTERPRISE-LICENSE.md at v$base" >&2; exit 1; }
+	for f in $sources; do
+		while IFS= read -r p; do
+			case "$p" in
+			*/) case "$f" in "$p"*) echo "$f is under $p, which ENTERPRISE-LICENSE.md at v$base lists: it is not under the MIT license" >&2; exit 1 ;; esac ;;
+			*) [ "$f" != "$p" ] || { echo "$f is listed in ENTERPRISE-LICENSE.md at v$base: it is not under the MIT license" >&2; exit 1; } ;;
+			esac
+		done < "$work/enterprise.paths"
+	done
+	echo "ok no source file is among the $(wc -l < "$work/enterprise.paths" | tr -d ' ') paths ENTERPRISE-LICENSE.md lists at v$base"
+fi
+
 packages=$(printf '%s\n' "$sources" | sed 's#/src/.*##' | sort -u)
 for tree in unpatched patched; do
 	mkdir -p "$work/$tree" "$work/out-$tree"

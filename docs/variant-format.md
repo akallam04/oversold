@@ -3,12 +3,14 @@
 A build variant is a Medusa image built from one pinned Medusa version plus the source change of one pull request, so the change can be run through the same scenarios as the release it patches. A variant lives in `targets/medusa/variants/<name>/`:
 
 ```
-targets/medusa/variants/<name>/
-  variant.yaml     what the variant is built from, decoded strictly
-  files/           compiled files that replace the published ones in the image
+targets/medusa/variants/
+  NOTICE             Medusa's copyright and license notice for every variant's files/
+  <name>/
+    variant.yaml     what the variant is built from, decoded strictly
+    files/           compiled files that replace the published ones in the image
 ```
 
-`files/` holds each replacement at its path under `node_modules` in the image, for example `files/@medusajs/inventory/dist/services/inventory-module.js`. The image build copies them over the published files and needs no access to GitHub. Nothing else belongs in the folder.
+`files/` holds each replacement at its path under `node_modules` in the image, for example `files/@medusajs/inventory/dist/services/inventory-module.js`. The image build copies them over the published files and needs no access to GitHub. Nothing else belongs in a variant's folder.
 
 ```sh
 ./bin/oversold variant                 list the variants
@@ -42,11 +44,19 @@ scripts/build-variant.sh pr-16961      rebuild its files from source and compare
 | `files[].replaces_sha256` | string | yes | SHA-256 of the published file in the `base_version` image. Oversold checks it in that image before it builds the variant image, and refuses to build if it differs. |
 | `files[].sha256` | string | yes | SHA-256 of the replacement in `files/`. Oversold checks it when it reads the variant, and again inside every running Medusa container of every run. |
 
+## License notice
+
+The files in `files/` are compiled copies of Medusa's files, with a pull request's change applied. Medusa's MIT license asks that its copyright and license notice stay with every copy. [targets/medusa/variants/NOTICE](../targets/medusa/variants/NOTICE) holds that notice: the full text of the `LICENSE` file at Medusa's tag `v2.22.0`, under a few lines that say which files it covers. One notice covers the `files/` folder of every variant.
+
+- `oversold variant <name>`, and so every run of a variant, reports a problem when the notice is missing or empty.
+- `scripts/build-variant.sh` stops when the notice does not hold the full `LICENSE` text of the tag it builds from.
+- Medusa's `LICENSE` leaves out the Enterprise Edition materials listed in its `ENTERPRISE-LICENSE.md`, which are not under the MIT license. A variant must not hold copies of those. `scripts/build-variant.sh` stops when a source file is one of the paths that file lists at the tag, or is under one of them.
+
 ## How the files are made
 
 `scripts/build-variant.sh <name>` makes the files from source and never by hand:
 
-1. Fetch the pull request's repository at tag `v<base_version>`, `source.base_sha` and `source.head_sha` into `.cache/` (gitignored), with a shallow fetch.
+1. Fetch the pull request's repository at tag `v<base_version>`, `source.base_sha` and `source.head_sha` into `.cache/` (gitignored), with a shallow fetch. Check the license notice against that tag, as "License notice" above describes.
 2. Take `git diff base_sha head_sha` over `source_files` and apply it to the `v<base_version>` tree. If it does not apply cleanly, the script stops.
 3. Compile every package that holds a source file twice, once unpatched and once patched, the way Medusa's package build does: `tsc --build`, then the `resolve:aliases` step (`tsc --showConfig` and `tsc-alias`) for packages whose build script runs it, with Medusa's `_tsconfig.base.json`. The compile runs inside the `base_version` image, which supplies Node and the `@medusajs` packages the sources import. TypeScript, `tsc-alias`, `@types/node`, `@types/jest` and `expect-type` are taken at exactly the versions Medusa's `yarn.lock` resolves at that tag ([scripts/variant-compile.js](../scripts/variant-compile.js)).
 4. Method check: every unpatched `.js` file must be byte-identical to the published file in the image, and every published `.js` file of those packages must have been compiled. Compiled test files that the packages do not publish are counted and skipped. If any file differs, the script stops.
