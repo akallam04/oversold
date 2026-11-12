@@ -1,0 +1,30 @@
+schema: oversold.scenario/v1
+name: counter-one-server
+description: >
+  Control. 100 WIDGET in stock. Ten carts buyer-1 to buyer-10 each hold OVS-
+  PIECE 1 on server 1 and are completed together. Stock is plentiful, so
+  Medusa's rules expect ten orders and a reserved counter of 10 that matches
+  the ten reservations.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 100
+carts:
+  buyer:
+    server: 1
+    count: 10
+    lines:
+      - sku: OVS-PIECE
+        qty: 1
+race:
+  - id: complete
+    server: 1
+    do: complete
+    cart: buyer
+timing:
+  release: together
+faults: []
+runs: 30
+seed: 6
