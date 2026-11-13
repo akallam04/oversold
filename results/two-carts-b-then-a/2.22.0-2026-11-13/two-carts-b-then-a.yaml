@@ -1,0 +1,42 @@
+schema: oversold.scenario/v1
+name: two-carts-b-then-a
+description: >
+  Order control for two-carts-shared-stock (#17032). Cart a holds OVS-PIECE 5
+  (5 WIDGET units). Cart b holds OVS-PIECE 3 and OVS-TWOPACK 2 (7 WIDGET
+  units, on two lines). 10 WIDGET are in stock, so each cart fits on its own
+  but together they need 12. Cart b is completed first and cart a only after
+  b's response, on server 1. Medusa's rules expect b to complete and a to be
+  rejected, since only 3 units are left for its 5.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 10
+carts:
+  a:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 5
+  b:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 3
+      - sku: OVS-TWOPACK
+        qty: 2
+race:
+  - id: complete-b
+    server: 1
+    do: complete
+    cart: b
+  - id: complete-a
+    server: 1
+    do: complete
+    cart: a
+timing:
+  release: sequential
+faults: []
+runs: 30
+seed: 9

@@ -1,0 +1,33 @@
+schema: oversold.scenario/v1
+name: duplicate-complete
+description: >
+  Control. One cart with OVS-PIECE 1 is completed by two actions released
+  together on the same server. Medusa locks a cart while it completes, so its
+  rules expect one order and one reservation, with both calls either returning
+  that order or one of them rejected.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  WIDGET: 10
+carts:
+  main:
+    server: 1
+    lines:
+      - sku: OVS-PIECE
+        qty: 1
+race:
+  - id: first
+    server: 1
+    do: complete
+    cart: main
+  - id: second
+    server: 1
+    do: complete
+    cart: main
+timing:
+  release: together
+faults: []
+runs: 30
+seed: 4

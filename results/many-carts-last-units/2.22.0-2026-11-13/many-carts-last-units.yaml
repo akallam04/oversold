@@ -1,0 +1,31 @@
+schema: oversold.scenario/v1
+name: many-carts-last-units
+description: >
+  Targets Medusa issue #16825: an orphaned order when a failing reservation
+  step races its sibling steps inside the cart completion workflow. Two SOLO
+  units in stock. Fifty carts buyer-1 to buyer-50 each hold OVS-SOLO 1 on
+  server 1 and are all completed together. Medusa's rules expect exactly two
+  orders, each with its reservation, and the other 48 completions rejected.
+target:
+  engine: medusa
+  version: 2.21.2
+  servers: 1
+stock:
+  SOLO: 2
+carts:
+  buyer:
+    server: 1
+    count: 50
+    lines:
+      - sku: OVS-SOLO
+        qty: 1
+race:
+  - id: complete
+    server: 1
+    do: complete
+    cart: buyer
+timing:
+  release: together
+faults: []
+runs: 30
+seed: 14
