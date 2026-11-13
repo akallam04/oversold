@@ -4,7 +4,19 @@
 
 **Jepsen-style history checking applied to full checkout flows.**
 
-Oversold is a test harness in Go that races concurrent checkouts against local copies of open-source commerce engines, records every request and the real database rows, and checks stock and order rules against that history.
+Oversold is a test harness in Go that races concurrent checkouts against local copies of Medusa, the open-source commerce engine, records every request and the real database rows, and checks stock and order rules against that history.
+
+## What it found
+
+Measured on local copies of Medusa, 30 runs per scenario and version. [results/README.md](results/README.md) has every count, report and history.
+
+- **A cart whose two lines draw on one stock item oversells, with no race** ([#16502](https://github.com/medusajs/medusa/issues/16502), tracked in [#17436](https://github.com/medusajs/medusa/issues/17436)). A cart needing 8 units against 6 in stock was accepted in 30 of 30 runs on each of 2.19.0, 2.21.2 and 2.22.0 ([results](results/README.md)).
+- **Two servers with Medusa's default in-memory locking lose the race** ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)). Across the three versions, the last unit sold twice in 87 of 90 runs, and the reserved counter lost updates in 90 of 90. With the Redis locking provider Medusa recommends for more than one server, both were 0 of 90 ([results](results/README.md)).
+- **Locking does not fix #16502.** With Redis locking, two carts on two servers that each fit but together need 12 units against 10 still oversold in 78 of 90 runs ([results](results/README.md)).
+- **pr-16961** ([#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, not merged) brought the multi-line oversell to 0 of 30 in every scenario it targets on 2.22.0. The two-server race with in-memory locking stayed: the last unit sold twice in 30 of 30 runs ([results](results/README.md#build-variant-pr-16961)).
+- **pr-17420** ([#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi, not merged) brought both two-server races to 0 of 30 with in-memory locking on 2.22.0, from 30 of 30 for the last unit and 30 of 30 for the counter on the same image. The multi-line oversell stayed: 30 of 30 for the single cart ([results](results/README.md#build-variant-pr-17420)).
+- **Neither pull request alone fixes both.** Two carts on two servers still oversold in 29 of 30 runs with pr-16961 and 17 of 30 with pr-17420. Both change `ensureInventoryLevels`, and neither applies on top of the other ([results](results/README.md#bug-scenarios-side-by-side)).
+- **[#16825](https://github.com/medusajs/medusa/issues/16825) was not reproduced.** Fifty carts racing for 2 units placed exactly 2 orders, each with its reservation, in every run on 2.19.0, 2.21.2, 2.22.0 and pr-17420 ([results](results/README.md)).
 
 ## Status
 
@@ -12,7 +24,9 @@ The measured runs are in [results/](results/README.md): every scenario in `scena
 
 Five of those scenarios ran with Medusa's Redis locking provider: normal-checkout-two-servers-redis-locking, duplicate-complete-two-servers-redis-locking, two-carts-shared-stock-two-servers-redis-locking, last-unit-two-servers-redis-locking and counter-two-servers-redis-locking, copies of the five two-server scenarios. Every other scenario ran with Medusa's default in-memory locking.
 
-Two build variants, each Medusa 2.22.0 with a community pull request that was not merged, ran 30 runs per scenario: pr-16961 ([medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs) on 14 of those scenarios and pr-17420 ([medusajs/medusa#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi) on 15. [results/](results/README.md#bug-scenarios-side-by-side) puts each next to plain 2.22.0.
+Two build variants, each Medusa 2.22.0 with a community pull request that was not merged, ran 30 runs per scenario: pr-16961 ([medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs) on 14 of those scenarios and pr-17420 ([medusajs/medusa#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi) on 15. Plain 2.22.0 ran those 15 scenarios a second time on the same image as pr-17420. [results/](results/README.md#bug-scenarios-side-by-side) puts each next to plain 2.22.0.
+
+In all, results/ holds 3,120 runs: 600 on each of 2.19.0, 2.21.2 and 2.22.0, 450 in the plain 2.22.0 rerun, 420 on pr-16961 and 450 on pr-17420.
 
 The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
 
