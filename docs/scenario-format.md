@@ -105,6 +105,8 @@ Exit codes:
 
 Each version has one image, `<prefix>:<version>`, and each variant one more, `<prefix>:<version>-<variant>`. Oversold labels every image it builds with `oversold.image-inputs`: the SHA-256 of a list of every file the image is built from, one `<sha256>  <path>` line per file sorted by path, with paths relative to `targets/medusa/`. The files are `Dockerfile`, `.dockerignore`, everything under `app/`, everything under `versions/<version>/`, and for a variant everything under `variants/<variant>/`, leaving out what `.dockerignore` leaves out (`node_modules`, `.medusa` and `.env`). Before a run set uses an image, Oversold computes that hash again and rebuilds the image if its label is missing or different. A rebuilt image also gets a new template database, since each template records the image it was built from. `make images` and `make up` label the images they build with the same hash, so Oversold does not rebuild them. `oversold image-inputs --version X [--variant NAME]` prints the hash for one image, and with `--files` the list it is the SHA-256 of.
 
+The base images are pinned by digest, as `name:tag@sha256:<digest>`: Node in the `FROM` lines of `targets/medusa/Dockerfile`, and Postgres and Redis in `compose.yaml`. A tag can move to a new image, so a rebuild from the same tag can sit on a different base even when every file Oversold hashes is unchanged. Since the Dockerfile is one of those files, changing a pin changes `oversold.image-inputs` and rebuilds every Medusa image once. Each pin is a multi-platform index digest that holds both linux/amd64 and linux/arm64.
+
 ## Example
 
 ```yaml

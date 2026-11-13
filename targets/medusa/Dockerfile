@@ -1,4 +1,4 @@
-FROM node:22.23.3-bookworm-slim AS build
+FROM node:22.23.3-bookworm-slim@sha256:3ed98443660ff48413b5af19ecefce3b9d50845a901a43420d47cc63a9fddbe9 AS build
 ARG MEDUSA_VERSION
 WORKDIR /app
 COPY versions/${MEDUSA_VERSION}/package.json versions/${MEDUSA_VERSION}/package-lock.json ./
@@ -6,7 +6,7 @@ RUN npm ci --legacy-peer-deps --no-audit --no-fund
 COPY app/ ./
 RUN npx medusa build
 
-FROM node:22.23.3-bookworm-slim AS release
+FROM node:22.23.3-bookworm-slim@sha256:3ed98443660ff48413b5af19ecefce3b9d50845a901a43420d47cc63a9fddbe9 AS release
 ARG MEDUSA_VERSION
 ENV NODE_ENV=production
 ENV MEDUSA_VERSION=${MEDUSA_VERSION}
