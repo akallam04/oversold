@@ -2,6 +2,18 @@
 
 Measured runs of every scenario in [scenarios/medusa/](../scenarios/medusa/), 30 runs each, on Medusa 2.22.0 (released Oct 21, 2026), 2.21.2 (released Sep 28, 2026) and 2.19.0 (released Aug 13, 2026). Each folder holds the scenario file that was run, `report.json`, `report.md` and every run's history, gzipped. The checks are defined in [docs/checks.md](../docs/checks.md), and the history format in [docs/history-format.md](../docs/history-format.md).
 
+## Findings in detail
+
+- **A cart whose two lines draw on one stock item oversells, with no race** ([#16502](https://github.com/medusajs/medusa/issues/16502), tracked in [#17436](https://github.com/medusajs/medusa/issues/17436)). A cart needing 8 units against 6 in stock was accepted in 30 of 30 runs on each of 2.19.0, 2.21.2 and 2.22.0 ([results](#all-run-sets)).
+- **Two servers with Medusa's default in-memory locking lose the race** ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)). Across the three versions, the last unit sold twice in 87 of 90 runs, and the reserved counter lost updates in 90 of 90. With the Redis locking provider Medusa recommends for more than one server, both were 0 of 90 ([results](#all-run-sets)).
+- **Locking does not fix #16502.** With Redis locking, two carts on two servers that each fit but together need 12 units against 10 still oversold in 78 of 90 runs ([results](#all-run-sets)).
+- **pr-16961** ([#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, not merged) brought the multi-line oversell to 0 of 30 in every scenario it targets on 2.22.0. The two-server race with in-memory locking stayed: the last unit sold twice in 30 of 30 runs ([results](#build-variant-pr-16961)).
+- **pr-17420** ([#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi, not merged) brought both two-server races to 0 of 30 with in-memory locking on 2.22.0, from 30 of 30 for the last unit and 30 of 30 for the counter on the same image. The multi-line oversell stayed: 30 of 30 for the single cart ([results](#build-variant-pr-17420)).
+- **Neither pull request alone fixes both.** Two carts on two servers still oversold in 29 of 30 runs with pr-16961 and 17 of 30 with pr-17420. Both change `ensureInventoryLevels`, and neither applies on top of the other ([results](#bug-scenarios-side-by-side)).
+- **[#16825](https://github.com/medusajs/medusa/issues/16825) was not reproduced.** Fifty carts racing for 2 units placed exactly 2 orders, each with its reservation, in every run on 2.19.0, 2.21.2, 2.22.0 and pr-17420 ([results](#all-run-sets)).
+
+## All run sets
+
 Each check cell counts the runs where that check failed, out of the runs recorded. The folders named `2.22.0-pr-16961` and `2.22.0-pr-17420` hold runs of the pr-16961 and pr-17420 build variants, described in their own sections below ([pr-16961](#build-variant-pr-16961), [pr-17420](#build-variant-pr-17420)). The folders named `2.22.0-2026-11-13` hold a rerun of plain 2.22.0 on the same image the pr-17420 variant was built on, compared in the pr-17420 section. None of these are rows of the main table. The exit code is the one `oversold run` gave for that run set: 0 when every check passed in every run, 1 when any check failed in any run.
 
 On 2.22.0, the same checks failed in the same scenarios as on 2.21.2. The fail counts differ only for two-carts-shared-stock (15 of 30 on 2.22.0, 14 of 30 on 2.21.2) and last-unit-two-servers (29 of 30 on 2.22.0, 28 of 30 on 2.21.2).

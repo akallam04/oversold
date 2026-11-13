@@ -8,15 +8,11 @@ Oversold is a test harness in Go that races concurrent checkouts against local c
 
 ## What it found
 
-Measured on local copies of Medusa, 30 runs per scenario and version. [results/README.md](results/README.md) has every count, report and history.
+- Races concurrent checkouts against local copies of Medusa and checks stock and order rules on every request and database row: 3,120 recorded runs, every verdict rechecked in CI ([results](results/README.md)).
+- Reproduced two open oversell bugs on Medusa 2.19.0, 2.21.2 and 2.22.0: a multi-line cart oversold in 30 of 30 runs on each ([#16502](https://github.com/medusajs/medusa/issues/16502), [#17436](https://github.com/medusajs/medusa/issues/17436)), and two servers sold the last unit twice in 87 of 90 with the default in-memory lock ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)) ([results](results/README.md#all-run-sets)).
+- Ran two unmerged community fixes built from each pull request's source ([#16961](https://github.com/medusajs/medusa/pull/16961), [#17420](https://github.com/medusajs/medusa/pull/17420)): each took its own bug to 0 of 30, and neither fixes both ([results](results/README.md#bug-scenarios-side-by-side)).
 
-- **A cart whose two lines draw on one stock item oversells, with no race** ([#16502](https://github.com/medusajs/medusa/issues/16502), tracked in [#17436](https://github.com/medusajs/medusa/issues/17436)). A cart needing 8 units against 6 in stock was accepted in 30 of 30 runs on each of 2.19.0, 2.21.2 and 2.22.0 ([results](results/README.md)).
-- **Two servers with Medusa's default in-memory locking lose the race** ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)). Across the three versions, the last unit sold twice in 87 of 90 runs, and the reserved counter lost updates in 90 of 90. With the Redis locking provider Medusa recommends for more than one server, both were 0 of 90 ([results](results/README.md)).
-- **Locking does not fix #16502.** With Redis locking, two carts on two servers that each fit but together need 12 units against 10 still oversold in 78 of 90 runs ([results](results/README.md)).
-- **pr-16961** ([#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, not merged) brought the multi-line oversell to 0 of 30 in every scenario it targets on 2.22.0. The two-server race with in-memory locking stayed: the last unit sold twice in 30 of 30 runs ([results](results/README.md#build-variant-pr-16961)).
-- **pr-17420** ([#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi, not merged) brought both two-server races to 0 of 30 with in-memory locking on 2.22.0, from 30 of 30 for the last unit and 30 of 30 for the counter on the same image. The multi-line oversell stayed: 30 of 30 for the single cart ([results](results/README.md#build-variant-pr-17420)).
-- **Neither pull request alone fixes both.** Two carts on two servers still oversold in 29 of 30 runs with pr-16961 and 17 of 30 with pr-17420. Both change `ensureInventoryLevels`, and neither applies on top of the other ([results](results/README.md#bug-scenarios-side-by-side)).
-- **[#16825](https://github.com/medusajs/medusa/issues/16825) was not reproduced.** Fifty carts racing for 2 units placed exactly 2 orders, each with its reservation, in every run on 2.19.0, 2.21.2, 2.22.0 and pr-17420 ([results](results/README.md)).
+More in [Findings in detail](results/README.md#findings-in-detail).
 
 ## Status
 
