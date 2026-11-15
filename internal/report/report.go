@@ -107,10 +107,21 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 		Generated:    history.Timestamp{Time: time.Now().UTC()},
 	}
 
-	counts := map[string]*CheckCount{}
-	for _, name := range sc.SelectedChecks() {
-		c, _ := checks.Lookup(name)
-		counts[name] = &CheckCount{Check: name, Version: c.Version}
+	selected := sc.SelectedChecks()
+	counts := map[checks.Spec]*CheckCount{}
+	for _, e := range entries {
+		for _, v := range e.History.Verdicts {
+			k := checks.Spec{Name: v.Check, Version: v.Version}
+			if counts[k] == nil && slices.Contains(selected, v.Check) {
+				counts[k] = &CheckCount{Check: v.Check, Version: v.Version}
+			}
+		}
+	}
+	if len(counts) == 0 {
+		for _, name := range selected {
+			c, _ := checks.Lookup(name)
+			counts[checks.Spec{Name: name, Version: c.Version}] = &CheckCount{Check: name, Version: c.Version}
+		}
 	}
 
 	builds := map[string]bool{}
@@ -151,7 +162,7 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 		run := Run{Index: h.Run.Index, File: e.File, Result: checks.Summarize(h.Verdicts), HarnessError: h.HarnessError, LockCalls: h.Race.LockCalls}
 		for _, v := range h.Verdicts {
 			run.Verdicts = append(run.Verdicts, RunVerdict{Check: v.Check, Version: v.Version, Result: v.Result, Reason: v.Reason})
-			cc := counts[v.Check]
+			cc := counts[checks.Spec{Name: v.Check, Version: v.Version}]
 			if cc == nil {
 				continue
 			}
@@ -169,8 +180,19 @@ func Build(file *scenario.File, entries []Entry, planned int, stoppedEarly strin
 	}
 	sort.Slice(r.Runs, func(i, j int) bool { return r.Runs[i].Index < r.Runs[j].Index })
 	sort.Slice(r.Servers, func(i, j int) bool { return r.Servers[i].Service < r.Servers[j].Service })
-	for _, name := range sc.SelectedChecks() {
-		r.Checks = append(r.Checks, *counts[name])
+	keys := make([]checks.Spec, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := slices.Index(selected, keys[i].Name), slices.Index(selected, keys[j].Name)
+		if a != b {
+			return a < b
+		}
+		return keys[i].Version < keys[j].Version
+	})
+	for _, k := range keys {
+		r.Checks = append(r.Checks, *counts[k])
 	}
 	r.ExitCode = exitCode(r)
 	return r
@@ -532,7 +554,7 @@ func Verify(dir string) ([]string, error) {
 	recomputedEntries := make([]Entry, len(entries))
 	for i, e := range entries {
 		planned = max(planned, e.History.Run.Runs)
-		recomputed, err := checks.Evaluate(e.History, selected)
+		recomputed, err := Recompute(e.History, selected)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.File, err)
 		}
@@ -541,8 +563,13 @@ func Verify(dir string) ([]string, error) {
 		}
 		if len(e.History.Verdicts) == 0 {
 			mismatches = append(mismatches, fmt.Sprintf("%s: no stored verdicts", e.File))
-		} else if !sameJSON(e.History.Verdicts, recomputed) {
-			mismatches = append(mismatches, fmt.Sprintf("%s: recomputed verdicts differ from the stored ones", e.File))
+		} else {
+			if p := storedCheckProblem(e.History.Verdicts, selected); p != "" {
+				mismatches = append(mismatches, fmt.Sprintf("%s: %s", e.File, p))
+			}
+			if !sameJSON(e.History.Verdicts, recomputed) {
+				mismatches = append(mismatches, fmt.Sprintf("%s: recomputed verdicts differ from the stored ones", e.File))
+			}
 		}
 		h := *e.History
 		h.Verdicts = recomputed
@@ -554,6 +581,28 @@ func Verify(dir string) ([]string, error) {
 		mismatches = append(mismatches, "report.json: "+d)
 	}
 	return mismatches, nil
+}
+
+func Recompute(h *history.History, selected []string) ([]history.Verdict, error) {
+	if len(h.Verdicts) > 0 {
+		return checks.Recheck(h)
+	}
+	return checks.Evaluate(h, selected)
+}
+
+func storedCheckProblem(stored []history.Verdict, selected []string) string {
+	last := -1
+	for _, v := range stored {
+		i := slices.Index(selected, v.Check)
+		switch {
+		case i < 0:
+			return fmt.Sprintf("stored verdict for %s, which the scenario does not run", v.Check)
+		case i <= last:
+			return "stored verdicts are not in the order of the scenario's checks, or repeat a check"
+		}
+		last = i
+	}
+	return ""
 }
 
 func reportDiffs(saved, want *Report) []string {

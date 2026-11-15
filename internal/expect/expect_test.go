@@ -29,14 +29,14 @@ func TestShippedExpectations(t *testing.T) {
 		t.Fatalf("runs %d, cases %d", e.Runs, len(e.Cases))
 	}
 	want := map[string]map[string]string{
-		"single-cart-over-demand":             {"no_oversell": FailEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"normal-checkout":                     {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"last-unit-two-servers":               {"no_oversell": FailAtLeastOnce, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"last-unit-one-server":                {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"counter-two-servers":                 {"no_oversell": PassEveryRun, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"counter-one-server":                  {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"last-unit-two-servers-redis-locking": {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
-		"counter-two-servers-redis-locking":   {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun},
+		"single-cart-over-demand":             {"no_oversell": FailEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"normal-checkout":                     {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"last-unit-two-servers":               {"no_oversell": FailAtLeastOnce, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"last-unit-one-server":                {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"counter-two-servers":                 {"no_oversell": PassEveryRun, "reserved_matches_reservations": FailAtLeastOnce, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"counter-one-server":                  {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"last-unit-two-servers-redis-locking": {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
+		"counter-two-servers-redis-locking":   {"no_oversell": PassEveryRun, "reserved_matches_reservations": PassEveryRun, "one_order_per_cart": PassEveryRun, "no_orphaned_orders": PassEveryRun, "no_missing_orders": PassEveryRun},
 	}
 	for _, c := range e.Cases {
 		name := c.File.Scenario.Name
@@ -67,12 +67,14 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/normal-checkout.yaml
     expect:
       no_oversell: pass_every_run
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
 `
 
 func TestGoodFile(t *testing.T) {
@@ -180,7 +182,7 @@ func TestExitCodeOrder(t *testing.T) {
 
 func fakeReport(runs int, counts map[string][2]int, harness, inconclusive int) *report.Report {
 	r := &report.Report{RunsRecorded: runs}
-	for _, name := range []string{"no_oversell", "reserved_matches_reservations", "one_order_per_cart", "no_orphaned_orders"} {
+	for _, name := range []string{"no_oversell", "reserved_matches_reservations", "one_order_per_cart", "no_orphaned_orders", "no_missing_orders"} {
 		c := counts[name]
 		r.Checks = append(r.Checks, report.CheckCount{Check: name, Runs: runs, Fail: c[0], Pass: c[1], Inconclusive: runs - c[0] - c[1]})
 	}
@@ -220,8 +222,8 @@ func TestSummaryAllMet(t *testing.T) {
 	control := shippedCase(t, "normal-checkout")
 	s := &Summary{MedusaVersion: "2.22.0"}
 	s.Cases = append(s.Cases,
-		CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {3, 0}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}}, 0, 0), "a", nil, m),
-		CaseFrom(control, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 3}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}}, 0, 0), "b", nil, m),
+		CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {3, 0}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}, "no_missing_orders": {0, 3}}, 0, 0), "a", nil, m),
+		CaseFrom(control, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 3}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}, "no_missing_orders": {0, 3}}, 0, 0), "b", nil, m),
 	)
 	s.Finish()
 	if s.ExitCode != 0 || len(s.Unmet) != 0 || len(s.Problems) != 0 {
@@ -237,7 +239,7 @@ func TestSummaryUnmet(t *testing.T) {
 	m := history.NewMasker()
 	bug := shippedCase(t, "single-cart-over-demand")
 	s := &Summary{MedusaVersion: "2.23.0"}
-	s.Cases = append(s.Cases, CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 3}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}}, 0, 0), "a", nil, m))
+	s.Cases = append(s.Cases, CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 3}, "reserved_matches_reservations": {0, 3}, "one_order_per_cart": {0, 3}, "no_orphaned_orders": {0, 3}, "no_missing_orders": {0, 3}}, 0, 0), "a", nil, m))
 	s.Finish()
 	want := "single-cart-over-demand on 2.23.0: no_oversell failed in 0 of 3 runs, expected every run. Medusa may have changed this; run the full scenario set before saying so."
 	if s.ExitCode != 1 || len(s.Unmet) != 1 || s.Unmet[0] != want {
@@ -251,7 +253,7 @@ func TestSummaryInconclusiveWins(t *testing.T) {
 	control := shippedCase(t, "normal-checkout")
 	s := &Summary{MedusaVersion: "2.22.0"}
 	s.Cases = append(s.Cases,
-		CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 2}, "reserved_matches_reservations": {0, 2}, "one_order_per_cart": {0, 2}, "no_orphaned_orders": {0, 2}}, 1, 1), "a", nil, m),
+		CaseFrom(bug, 3, fakeReport(3, map[string][2]int{"no_oversell": {0, 2}, "reserved_matches_reservations": {0, 2}, "one_order_per_cart": {0, 2}, "no_orphaned_orders": {0, 2}, "no_missing_orders": {0, 2}}, 1, 1), "a", nil, m),
 		CaseFrom(control, 3, nil, "", errors.New("connect: password hunter2-secret-value rejected"), m),
 	)
 	s.Finish()
@@ -276,7 +278,7 @@ func TestSummaryShortRunSet(t *testing.T) {
 	m := history.NewMasker()
 	control := shippedCase(t, "normal-checkout")
 	s := &Summary{MedusaVersion: "2.22.0"}
-	s.Cases = append(s.Cases, CaseFrom(control, 3, fakeReport(2, map[string][2]int{"no_oversell": {0, 2}, "reserved_matches_reservations": {0, 2}, "one_order_per_cart": {0, 2}, "no_orphaned_orders": {0, 2}}, 0, 0), "a", nil, m))
+	s.Cases = append(s.Cases, CaseFrom(control, 3, fakeReport(2, map[string][2]int{"no_oversell": {0, 2}, "reserved_matches_reservations": {0, 2}, "one_order_per_cart": {0, 2}, "no_orphaned_orders": {0, 2}, "no_missing_orders": {0, 2}}, 0, 0), "a", nil, m))
 	s.Finish()
 	if s.ExitCode != 3 || !strings.Contains(strings.Join(s.Problems, "\n"), "only 2 of 3 runs recorded") {
 		t.Fatalf("exit %d, problems %q", s.ExitCode, s.Problems)

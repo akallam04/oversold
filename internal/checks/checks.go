@@ -2,6 +2,7 @@ package checks
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -15,24 +16,52 @@ import (
 type Check struct {
 	Name    string
 	Version int
+	strict  bool
 	eval    func(*state) (history.Result, string, []history.Evidence)
 }
 
-var all = []Check{
+type Spec struct {
+	Name    string
+	Version int
+}
+
+var versions = []Check{
 	{Name: "no_oversell", Version: 1, eval: noOversell},
+	{Name: "no_oversell", Version: 2, strict: true, eval: noOversell},
 	{Name: "reserved_matches_reservations", Version: 1, eval: reservedMatchesReservations},
+	{Name: "reserved_matches_reservations", Version: 2, strict: true, eval: reservedMatchesReservations},
 	{Name: "one_order_per_cart", Version: 1, eval: oneOrderPerCart},
+	{Name: "one_order_per_cart", Version: 2, strict: true, eval: oneOrderPerCart},
 	{Name: "no_orphaned_orders", Version: 1, eval: noOrphanedOrders},
+	{Name: "no_orphaned_orders", Version: 2, strict: true, eval: noOrphanedOrdersOncePerOrder},
+	{Name: "no_missing_orders", Version: 1, strict: true, eval: noMissingOrders},
 }
 
 func All() []Check {
-	out := make([]Check, len(all))
-	copy(out, all)
+	var out []Check
+	at := map[string]int{}
+	for _, c := range versions {
+		i, seen := at[c.Name]
+		if !seen {
+			at[c.Name] = len(out)
+			out = append(out, c)
+			continue
+		}
+		if c.Version > out[i].Version {
+			out[i] = c
+		}
+	}
+	return out
+}
+
+func Versions() []Check {
+	out := make([]Check, len(versions))
+	copy(out, versions)
 	return out
 }
 
 func Lookup(name string) (Check, bool) {
-	for _, c := range all {
+	for _, c := range All() {
 		if c.Name == name {
 			return c, true
 		}
@@ -40,24 +69,112 @@ func Lookup(name string) (Check, bool) {
 	return Check{}, false
 }
 
+func LookupVersion(name string, version int) (Check, bool) {
+	for _, c := range versions {
+		if c.Name == name && c.Version == version {
+			return c, true
+		}
+	}
+	return Check{}, false
+}
+
 func Evaluate(h *history.History, names []string) ([]history.Verdict, error) {
-	st, why := prepare(h)
-	out := make([]history.Verdict, 0, len(names))
+	specs := make([]Spec, 0, len(names))
 	for _, name := range names {
 		c, ok := Lookup(name)
 		if !ok {
 			return nil, fmt.Errorf("unknown check %q", name)
 		}
+		specs = append(specs, Spec{Name: c.Name, Version: c.Version})
+	}
+	return EvaluateVersions(h, specs)
+}
+
+func Recheck(h *history.History) ([]history.Verdict, error) {
+	if h == nil || len(h.Verdicts) == 0 {
+		return nil, errors.New("history has no stored verdicts")
+	}
+	specs := make([]Spec, len(h.Verdicts))
+	for i, v := range h.Verdicts {
+		specs[i] = Spec{Name: v.Check, Version: v.Version}
+	}
+	return EvaluateVersions(h, specs)
+}
+
+func EvaluateVersions(h *history.History, specs []Spec) ([]history.Verdict, error) {
+	st, why := prepare(h)
+	strictWhy, strictDone := "", false
+	out := make([]history.Verdict, 0, len(specs))
+	for _, sp := range specs {
+		c, ok := LookupVersion(sp.Name, sp.Version)
+		if !ok {
+			if _, known := Lookup(sp.Name); known {
+				return nil, fmt.Errorf("check %q has no version %d", sp.Name, sp.Version)
+			}
+			return nil, fmt.Errorf("unknown check %q", sp.Name)
+		}
+		reason := why
+		if reason == "" && c.strict {
+			if !strictDone {
+				strictWhy, strictDone = strictProblems(h), true
+			}
+			reason = strictWhy
+		}
 		v := history.Verdict{Check: c.Name, Version: c.Version}
-		if why != "" {
+		if reason != "" {
 			v.Result = history.Inconclusive
-			v.Reason = why
+			v.Reason = reason
 		} else {
-			v.Result, v.Reason, v.Evidence = c.eval(st)
+			var err error
+			if v.Result, v.Reason, v.Evidence, err = run(c, st); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+func run(c Check, st *state) (res history.Result, reason string, ev []history.Evidence, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("check %s version %d could not read this history: %v", c.Name, c.Version, r)
+		}
+	}()
+	res, reason, ev = c.eval(st)
+	return res, reason, ev, nil
+}
+
+func strictProblems(h *history.History) string {
+	var missing, unreadable []string
+	inAfter := map[levelKey]bool{}
+	for _, l := range h.After.InventoryLevels {
+		inAfter[levelKey{l.InventoryItemID, l.LocationID}] = true
+		if _, ok := rat(l.StockedQuantity); !ok {
+			unreadable = append(unreadable, fmt.Sprintf("%s at %s has unreadable stocked_quantity %q", l.SKU, l.LocationID, l.StockedQuantity))
+		}
+		if _, ok := rat(l.ReservedQuantity); !ok {
+			unreadable = append(unreadable, fmt.Sprintf("%s at %s has unreadable reserved_quantity %q", l.SKU, l.LocationID, l.ReservedQuantity))
+		}
+	}
+	for _, l := range h.Before.InventoryLevels {
+		if !inAfter[levelKey{l.InventoryItemID, l.LocationID}] {
+			missing = append(missing, fmt.Sprintf("%s at %s is in the before snapshot but not in the after snapshot", l.SKU, l.LocationID))
+		}
+	}
+	for _, r := range h.After.Reservations {
+		if !inAfter[levelKey{r.InventoryItemID, r.LocationID}] {
+			missing = append(missing, fmt.Sprintf("live reservation %s for %s at %s has no inventory level", r.ID, r.InventorySKU, r.LocationID))
+		}
+	}
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, "after snapshot is missing rows: "+strings.Join(missing, "; "))
+	}
+	if len(unreadable) > 0 {
+		parts = append(parts, "after snapshot has unreadable quantities: "+strings.Join(unreadable, "; "))
+	}
+	return strings.Join(parts, "; ")
 }
 
 type levelKey struct {
@@ -487,6 +604,87 @@ func noOrphanedOrders(st *state) (history.Result, string, []history.Evidence) {
 		})
 	}
 
+	problems, ev = st.failedCartsHaveNoOrder(byCart, problems, ev)
+	if len(problems) > 0 {
+		return history.Fail, strings.Join(problems, "; "), ev
+	}
+	return history.Pass, fmt.Sprintf("%d orders, each linked to a scenario cart and holding the reservations its lines need", len(st.orders)), ev
+}
+
+func noOrphanedOrdersOncePerOrder(st *state) (history.Result, string, []history.Evidence) {
+	byOrder := map[string][]string{}
+	for _, l := range st.after.CartOrders {
+		if l.DeletedAt == nil {
+			byOrder[l.OrderID] = append(byOrder[l.OrderID], l.CartID)
+		}
+	}
+	byCart := st.linksByCart()
+
+	var problems []string
+	var ev []history.Evidence
+	for _, o := range st.orders {
+		carts := byOrder[o.ID]
+		if len(carts) == 0 {
+			problems = append(problems, fmt.Sprintf("order %s is not linked to any cart", o.ID))
+		}
+		for _, c := range carts {
+			if _, ok := st.carts[c]; !ok {
+				problems = append(problems, fmt.Sprintf("order %s is linked to cart %s, which is not a scenario cart", o.ID, c))
+			}
+		}
+
+		needs := map[string]*big.Rat{}
+		var items []string
+		tied := map[string]bool{}
+		for _, l := range o.Lines {
+			qty, _ := rat(l.Quantity)
+			tied[l.LineItemID] = true
+			for id := range st.cartLinesFor(carts, l) {
+				tied[id] = true
+			}
+			for _, n := range st.lineNeeds(l) {
+				if needs[n.item] == nil {
+					needs[n.item] = new(big.Rat)
+					items = append(items, n.item)
+				}
+				needs[n.item].Add(needs[n.item], new(big.Rat).Mul(qty, n.required))
+			}
+		}
+		totalNeed, totalHeld := new(big.Rat), new(big.Rat)
+		for _, item := range items {
+			held := new(big.Rat)
+			for _, r := range st.after.Reservations {
+				if r.InventoryItemID != item || r.LineItemID == nil || !tied[*r.LineItemID] {
+					continue
+				}
+				q, _ := rat(r.Quantity)
+				held.Add(held, q)
+			}
+			totalNeed.Add(totalNeed, needs[item])
+			totalHeld.Add(totalHeld, held)
+			if needs[item].Cmp(held) != 0 {
+				problems = append(problems, fmt.Sprintf("order %s needs %s %s but holds %s", o.ID, num(needs[item]), st.skuOf(item), num(held)))
+			}
+		}
+		ev = append(ev, history.Evidence{
+			Subject: "order " + o.ID,
+			Numbers: map[string]json.Number{
+				"lines":          json.Number(fmt.Sprint(len(o.Lines))),
+				"units_needed":   num(totalNeed),
+				"units_reserved": num(totalHeld),
+			},
+			Values: map[string]string{"carts": strings.Join(carts, ",")},
+		})
+	}
+
+	problems, ev = st.failedCartsHaveNoOrder(byCart, problems, ev)
+	if len(problems) > 0 {
+		return history.Fail, strings.Join(problems, "; "), ev
+	}
+	return history.Pass, fmt.Sprintf("%d orders, each linked to a scenario cart and holding the reservations its lines need", len(st.orders)), ev
+}
+
+func (st *state) failedCartsHaveNoOrder(byCart map[string][]string, problems []string, ev []history.Evidence) ([]string, []history.Evidence) {
 	for _, name := range st.cartNames() {
 		ops := st.complete[name]
 		if len(ops) == 0 {
@@ -523,11 +721,98 @@ func noOrphanedOrders(st *state) (history.Result, string, []history.Evidence) {
 			},
 		})
 	}
+	return problems, ev
+}
+
+func noMissingOrders(st *state) (history.Result, string, []history.Evidence) {
+	saved := map[string]int{}
+	canceled := map[string]bool{}
+	for _, o := range st.after.Orders {
+		if o.CanceledAt != nil || o.Status == "canceled" {
+			canceled[o.ID] = true
+			continue
+		}
+		saved[o.ID]++
+	}
+	byCart := st.linksByCart()
+
+	var problems, skipped []string
+	var ev []history.Evidence
+	okCalls := 0
+	for _, name := range st.cartNames() {
+		ops := st.complete[name]
+		if len(ops) == 0 {
+			continue
+		}
+		id := st.h.Carts[name]
+		linked := map[string]bool{}
+		for _, oid := range byCart[id] {
+			linked[oid] = true
+		}
+		var calls []string
+		unknown := false
+		for _, op := range ops {
+			if op.Outcome == history.Unknown {
+				unknown = true
+			}
+			if op.Outcome == history.OK {
+				calls = append(calls, fmt.Sprintf("%s#%d=%s", op.ActionID, op.ID, responseOrderID(op.ResponseBody)))
+			}
+		}
+		status := "every ok call returned a saved order linked to this cart"
+		if unknown {
+			status = "skipped, has an unknown call"
+			skipped = append(skipped, name)
+		} else {
+			for _, op := range ops {
+				if op.Outcome != history.OK {
+					continue
+				}
+				okCalls++
+				oid := responseOrderID(op.ResponseBody)
+				call := fmt.Sprintf("%s#%d", op.ActionID, op.ID)
+				var problem string
+				switch {
+				case oid == "":
+					problem = "returned no order id"
+				case saved[oid] == 0 && canceled[oid]:
+					problem = fmt.Sprintf("returned order %s, which is canceled", oid)
+				case saved[oid] == 0:
+					problem = fmt.Sprintf("returned order %s, which is not in the after snapshot", oid)
+				case saved[oid] > 1:
+					problem = fmt.Sprintf("returned order %s, which appears %d times in the after snapshot", oid, saved[oid])
+				case !linked[oid]:
+					problem = fmt.Sprintf("returned order %s, which is not linked to this cart", oid)
+				}
+				if problem != "" {
+					problems = append(problems, fmt.Sprintf("cart %s: ok complete call %s %s", name, call, problem))
+					status = "an ok call returned a missing order"
+				}
+			}
+		}
+		ev = append(ev, history.Evidence{
+			Subject: "cart " + name,
+			Numbers: map[string]json.Number{
+				"ok_complete_calls": json.Number(fmt.Sprint(len(calls))),
+				"linked_orders":     json.Number(fmt.Sprint(len(byCart[id]))),
+			},
+			Values: map[string]string{
+				"cart_id":       id,
+				"ok_calls":      strings.Join(calls, ","),
+				"linked_orders": strings.Join(byCart[id], ","),
+				"missing_rule":  status,
+			},
+		})
+	}
 
 	if len(problems) > 0 {
 		return history.Fail, strings.Join(problems, "; "), ev
 	}
-	return history.Pass, fmt.Sprintf("%d orders, each linked to a scenario cart and holding the reservations its lines need", len(st.orders)), ev
+	reason := fmt.Sprintf("every ok complete call returned a saved order linked to its cart (%d checked)", okCalls)
+	if len(skipped) > 0 {
+		reason += "; carts skipped for an unknown call: " + strings.Join(skipped, ", ")
+	}
+	return history.Pass, reason, ev
 }
 
 func (st *state) linksByCart() map[string][]string {

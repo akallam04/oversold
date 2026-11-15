@@ -11,6 +11,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/normal-checkout.yaml
     note: "control for #16502"
     expect:
@@ -18,6 +19,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/last-unit-two-servers.yaml
     note: "#17032"
     expect:
@@ -25,6 +27,7 @@ cases:
       reserved_matches_reservations: fail_at_least_once
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/last-unit-one-server.yaml
     note: "control for #17032"
     expect:
@@ -32,6 +35,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/last-unit-two-servers-redis-locking.yaml
     note: "control for #17032 with Redis locking"
     expect:
@@ -39,6 +43,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/counter-two-servers.yaml
     note: "#17032"
     expect:
@@ -46,6 +51,7 @@ cases:
       reserved_matches_reservations: fail_at_least_once
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/counter-one-server.yaml
     note: "control for #17032"
     expect:
@@ -53,6 +59,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/counter-two-servers-redis-locking.yaml
     note: "control for #17032 with Redis locking"
     expect:
@@ -60,3 +67,4 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run

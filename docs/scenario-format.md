@@ -47,7 +47,7 @@ A scenario is one YAML file that says which engine to start, how to set up stock
 | `faults` | list | no | Must be empty or absent. Fault kinds come later. |
 | `runs` | integer | yes | From 1 to 1000. `oversold run --runs N` overrides it. |
 | `seed` | integer | yes | Seeds the jitter. The same seed and run index always give the same delays. |
-| `checks` | list | no | Check names from the fixed list below, each at most once. Leave the field out to run all four. An empty list, or the field with no value, is an error. |
+| `checks` | list | no | Check names from the fixed list below, each at most once. Leave the field out to run every check. An empty list, or the field with no value, is an error. |
 
 Carts are prepared in the order they appear in the file, copies of a counted cart in number order. After expanding counts, cart names and action ids must still be unique, and a scenario may have at most 200 race actions.
 
@@ -71,6 +71,7 @@ A scenario chooses which checks apply to it. Checks take no parameters, so a sce
 | `reserved_matches_reservations` | The reserved quantity on each inventory level equals the sum of its live reservations. |
 | `one_order_per_cart` | A cart is linked to at most one order, and every `ok` complete call for a cart returned the same order. |
 | `no_orphaned_orders` | Every order comes from a scenario cart and holds the reservations its lines need, and a cart whose completion definitely failed has no order. |
+| `no_missing_orders` | Every `ok` complete call returned the id of exactly one saved order that is not canceled and is linked to that cart. A cart with an `unknown` complete call is skipped. |
 
 ## What one run does
 

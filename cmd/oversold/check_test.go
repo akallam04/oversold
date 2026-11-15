@@ -54,9 +54,9 @@ func TestCheckCopiedHistories(t *testing.T) {
 		wantFail map[string]int
 		wantLine string
 	}{
-		{"normal-checkout", 0, map[string]int{}, "no_oversell v1: fail 0 of 1, pass 1 of 1, inconclusive 0 of 1"},
-		{"single-cart-over-demand", 1, map[string]int{"no_oversell": 1}, "no_oversell v1: fail 1 of 1, pass 0 of 1, inconclusive 0 of 1"},
-		{"duplicate-complete", 0, map[string]int{}, "one_order_per_cart v1: fail 0 of 1, pass 1 of 1, inconclusive 0 of 1"},
+		{"normal-checkout", 0, map[string]int{}, "no_oversell v2: fail 0 of 1, pass 1 of 1, inconclusive 0 of 1"},
+		{"single-cart-over-demand", 1, map[string]int{"no_oversell": 1}, "no_oversell v2: fail 1 of 1, pass 0 of 1, inconclusive 0 of 1"},
+		{"duplicate-complete", 0, map[string]int{}, "one_order_per_cart v2: fail 0 of 1, pass 1 of 1, inconclusive 0 of 1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,6 +236,11 @@ func sameVerdicts(t *testing.T, a, b []byte) bool {
 
 func storeVerdicts(t *testing.T, dir string) {
 	t.Helper()
+	storeVerdictsAt(t, dir, 0)
+}
+
+func storeVerdictsAt(t *testing.T, dir string, version int) {
+	t.Helper()
 	path := filepath.Join(dir, "run-001.json")
 	h, err := history.Read(path)
 	if err != nil {
@@ -245,7 +250,16 @@ func storeVerdicts(t *testing.T, dir string) {
 	if len(problems) > 0 {
 		t.Fatal(problems)
 	}
-	if h.Verdicts, err = checks.Evaluate(h, f.Scenario.SelectedChecks()); err != nil {
+	if version == 0 {
+		h.Verdicts, err = checks.Evaluate(h, f.Scenario.SelectedChecks())
+	} else {
+		var specs []checks.Spec
+		for _, name := range f.Scenario.SelectedChecks() {
+			specs = append(specs, checks.Spec{Name: name, Version: version})
+		}
+		h.Verdicts, err = checks.EvaluateVersions(h, specs)
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := history.WriteJSON(path, h, nil); err != nil {
@@ -331,6 +345,17 @@ func TestVerify(t *testing.T) {
 			t.Errorf("verify = %d\n%s", code, out)
 		}
 	})
+	t.Run("verdict for a check the scenario does not run", func(t *testing.T) {
+		dir := copyRunFolder(t, "normal-checkout")
+		storeVerdicts(t, dir)
+		editJSON(t, filepath.Join(dir, "run-001.json"), func(h map[string]any) {
+			vs := h["verdicts"].([]any)
+			h["verdicts"] = append(vs, map[string]any{"check": "no_missing_orders", "version": 1, "result": "pass", "reason": "x"})
+		})
+		if code, out := verify(dir); code != 1 || !strings.Contains(out, "stored verdict for no_missing_orders, which the scenario does not run") {
+			t.Errorf("verify = %d\n%s", code, out)
+		}
+	})
 	t.Run("no stored verdicts", func(t *testing.T) {
 		dir := copyRunFolder(t, "normal-checkout")
 		var stdout, stderr bytes.Buffer
@@ -345,4 +370,47 @@ func TestVerify(t *testing.T) {
 			t.Errorf("verify without report = %d, want 2", code)
 		}
 	})
+}
+
+func TestStoredVersionOneStaysVersionOne(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		code int
+		line string
+	}{
+		{"normal-checkout", 0, "no_orphaned_orders v1: fail 0 of 1, pass 1 of 1, inconclusive 0 of 1"},
+		{"single-cart-over-demand", 1, "no_oversell v1: fail 1 of 1, pass 0 of 1, inconclusive 0 of 1"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := copyRunFolder(t, tt.name)
+			storeVerdictsAt(t, dir, 1)
+			var stdout, stderr bytes.Buffer
+			if code := run([]string{"check", dir}, &stdout, &stderr); code != tt.code {
+				t.Fatalf("check = %d\n%s%s", code, stdout.String(), stderr.String())
+			}
+			out := stdout.String()
+			if !strings.Contains(out, tt.line) || strings.Contains(out, " v2: ") || !strings.Contains(out, "stored verdicts matched in 1 of 1") {
+				t.Errorf("check output:\n%s", out)
+			}
+			b, _ := os.ReadFile(filepath.Join(dir, "report.json"))
+			var rep struct {
+				Checks []struct {
+					Check   string `json:"check"`
+					Version int    `json:"version"`
+				} `json:"checks"`
+			}
+			if err := json.Unmarshal(b, &rep); err != nil || len(rep.Checks) != 4 {
+				t.Fatalf("report checks = %+v, err %v", rep.Checks, err)
+			}
+			for _, c := range rep.Checks {
+				if c.Version != 1 {
+					t.Errorf("report lists %s version %d", c.Check, c.Version)
+				}
+			}
+			stdout.Reset()
+			if code := run([]string{"check", "--verify", dir}, &stdout, &stderr); code != 0 {
+				t.Errorf("verify = %d\n%s%s", code, stdout.String(), stderr.String())
+			}
+		})
+	}
 }

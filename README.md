@@ -9,7 +9,7 @@ Oversold is a test harness in Go that races concurrent checkouts against local c
 ## What it found
 
 - Races concurrent checkouts against local copies of Medusa and checks stock and order rules on every request and database row: 3,120 recorded runs, every verdict rechecked in CI ([results](results/README.md)).
-- Reproduced two open oversell bugs on Medusa 2.19.0, 2.21.2 and 2.22.0: a multi-line cart oversold in 30 of 30 runs on each ([#16502](https://github.com/medusajs/medusa/issues/16502), [#17436](https://github.com/medusajs/medusa/issues/17436)), and two servers sold the last unit twice in 87 of 90 with the default in-memory lock ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)) ([results](results/README.md#all-run-sets)).
+- Reproduced two unfixed oversell bugs on Medusa 2.19.0, 2.21.2 and 2.22.0: a multi-line cart oversold in 30 of 30 runs on each ([#16502](https://github.com/medusajs/medusa/issues/16502), [#17436](https://github.com/medusajs/medusa/issues/17436)), and two servers sold the last unit twice in 87 of 90 with the default in-memory lock ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)) ([results](results/README.md#all-run-sets)).
 - Ran two unmerged community fixes built from each pull request's source ([#16961](https://github.com/medusajs/medusa/pull/16961), [#17420](https://github.com/medusajs/medusa/pull/17420)): each took its own bug to 0 of 30, and neither fixes both ([results](results/README.md#bug-scenarios-side-by-side)).
 
 More in [Findings in detail](results/README.md#findings-in-detail).
@@ -97,14 +97,17 @@ A scenario is a YAML file that sets stock, prepares carts and races requests aga
 
 ## Checks
 
-Checks are pure functions over one saved history, so they need no Docker or database. Each has a version, and [docs/checks.md](docs/checks.md) records every change to a rule.
+Checks are pure functions over one saved history, so they need no Docker or database. Each has a version, and [docs/checks.md](docs/checks.md) records every change to a rule. A saved history is always rechecked with the versions it recorded.
 
 - `no_oversell`: live reservations never exceed stock, and the run's orders never need more units than were stocked at the start of the race. Judged from order, reservation and stock rows, never from Medusa's reserved counter.
 - `reserved_matches_reservations`: Medusa's reserved counter equals the sum of its live reservation rows.
 - `one_order_per_cart`: a cart becomes at most one order, and every successful complete call for it returned the same order.
 - `no_orphaned_orders`: every order comes from a scenario cart and holds the reservations its lines need, and a cart whose completion definitely failed has no order.
+- `no_missing_orders`: every successful complete call returned the id of exactly one saved order that is not canceled and is linked to that cart.
 
-A run is `inconclusive` for every check when the harness failed, a snapshot is missing, or the run did not start clean.
+A run is `inconclusive` for every check when the harness failed, a snapshot is missing, or the run did not start clean. The newest check versions are also inconclusive when the after snapshot lost an inventory level, holds a reservation without a level, or has a level quantity that cannot be read.
+
+[Known limits](docs/checks.md#known-limits) lists what the checks do not show.
 
 ## Prior work
 
@@ -162,7 +165,7 @@ make down
 
 `oversold run` prints one line per run, each check's counts, and last the path of the report it writes in `runs/<UTC time>-<scenario name>-<version>/`, with `-<variant>` after the version for a variant. It builds the Medusa image and template database for a version the first time that version runs, and again whenever the files the image is built from change. `--runs` must be from 1 to 1000, in `oversold run` and `oversold expect` alike. It refuses to run if the Docker endpoint is not local, and refuses any Medusa or database URL whose host is not localhost, 127.0.0.1 or ::1.
 
-`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the current rules and no Docker. It reads plain and gzipped histories. `oversold check --verify runs/<folder>` writes nothing and exits 0 only when the stored verdicts and the report match the recomputed ones, and 1 when anything differs, whatever the verdicts are. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
+`oversold check runs/<folder>` recomputes every verdict and the report from the saved histories alone, with the check versions each history recorded and no Docker. It reads plain and gzipped histories. `oversold check --verify runs/<folder>` writes nothing and exits 0 only when the stored verdicts and the report match the recomputed ones, and 1 when anything differs, whatever the verdicts are. `oversold export runs/<folder> <dest>` copies the scenario, the report and every history, gzipped, into an empty folder that `oversold check` can read the same way.
 
 Both commands exit 0 when every chosen check passed in every run, 1 when any check failed, 2 for an invalid scenario or bad usage, and 3 when nothing failed but a run was inconclusive.
 
@@ -181,7 +184,7 @@ cmd/oversold/                  CLI entry point: validate, run, check, export, ex
 internal/scenario/             scenario format v1, strict decoding and validation
 internal/expect/               expectation format v1, oversold expect summaries and exit codes
 internal/runner/               runs a scenario: reset, setup, barrier race, snapshots, verdicts
-internal/checks/               the four checks, pure functions over one history
+internal/checks/               the checks and every version of their rules, pure functions over one history
 internal/report/               report.json and report.md, exit codes
 internal/history/              history format v1, outcome rules and masking
 internal/stack/                Docker Compose control, Docker names and ports, template database reset, target facts

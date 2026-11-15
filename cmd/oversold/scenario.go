@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/akallam04/oversold/internal/checks"
 	"github.com/akallam04/oversold/internal/envfile"
 	"github.com/akallam04/oversold/internal/report"
 	"github.com/akallam04/oversold/internal/runner"
@@ -158,7 +157,7 @@ func checkCmd(args []string, stdout, stderr io.Writer) int {
 	for _, e := range entries {
 		h := e.History
 		planned = max(planned, h.Run.Runs)
-		recomputed, err := checks.Evaluate(h, selected)
+		recomputed, err := report.Recompute(h, selected)
 		if err != nil {
 			fmt.Fprintf(stderr, "oversold check: %s: %v\n", e.File, err)
 			return report.ExitUsage

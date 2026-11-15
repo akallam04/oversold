@@ -268,7 +268,7 @@ func TestChecksDefaultToAll(t *testing.T) {
 		t.Fatalf("problems: %q", problems)
 	}
 	if got := s.SelectedChecks(); !slices.Equal(got, Checks) {
-		t.Errorf("selected = %q, want all four", got)
+		t.Errorf("selected = %q, want every check", got)
 	}
 	s, _ = Parse([]byte(minimal("  - one_order_per_cart\n")))
 	if got := s.SelectedChecks(); !slices.Equal(got, []string{"no_oversell", "one_order_per_cart"}) {

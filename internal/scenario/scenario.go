@@ -58,6 +58,7 @@ var Checks = []string{
 	"reserved_matches_reservations",
 	"one_order_per_cart",
 	"no_orphaned_orders",
+	"no_missing_orders",
 }
 
 var Actions = []string{"complete"}
@@ -573,10 +574,10 @@ func (s *Scenario) validate() []string {
 	}
 
 	if s.checksIsNil {
-		add("checks: has no value; list check names or leave the field out to run all four")
+		add("checks: has no value; list check names or leave the field out to run every check")
 	}
 	if s.Checks != nil && len(*s.Checks) == 0 {
-		add("checks: an empty list is not allowed; list check names or leave the field out to run all four")
+		add("checks: an empty list is not allowed; list check names or leave the field out to run every check")
 	}
 	var chosen []string
 	if s.Checks != nil {

@@ -14,7 +14,7 @@ runs/<UTC start time>-<scenario name>-<medusa version used>[-<variant>]/
 
 Histories can also be stored gzipped as `run-NNN.json.gz`. `oversold check` reads both forms. `oversold export <run folder> <dest>` copies the scenario file, the report and every history, gzipped, into an empty `<dest>`, with the report's links pointing at the gzipped files. `oversold check` on the export gives the same verdicts. `oversold check --verify <folder>` recomputes every verdict and the report, and every `lock_calls` from its command stats, without writing anything, and exits 0 only if they match what is stored, 1 if anything differs, and 2 if the folder cannot be read.
 
-A history records what Oversold sent, what came back, the database rows before and after the race, and the verdict of each chosen check. The verdicts are computed from the rest of the file alone. `oversold check <run folder>` recomputes them with the current rules and rewrites the report. It never changes a history.
+A history records what Oversold sent, what came back, the database rows before and after the race, and the verdict of each chosen check. The verdicts are computed from the rest of the file alone. `oversold check <run folder>` recomputes them with the check versions stored in the history, or with the newest versions when it has no stored verdicts, and rewrites the report. It never changes a history.
 
 ## Secrets
 

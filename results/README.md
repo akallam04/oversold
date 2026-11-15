@@ -255,4 +255,6 @@ make build
 for d in results/*/*/; do ./bin/oversold check --verify "$d"; done
 ```
 
-`oversold check --verify` exits 0 only when the stored verdicts and the report match the ones it recomputes with the current check rules, and 1 when anything differs. `oversold check <folder>` prints every run's verdicts and rewrites that folder's report.
+`oversold check --verify` exits 0 only when the stored verdicts and the report match the ones it recomputes with the check versions stored in each history, and 1 when anything differs. `oversold check <folder>` prints every run's verdicts and rewrites that folder's report.
+
+On 2026-11-15 (UTC) all 3,120 histories here were also rechecked in memory, writing nothing, with version 2 of the first four checks and version 1 of no_missing_orders ([check versions](../docs/checks.md#how-old-histories-are-verified)). Every version 2 verdict had the same result, reason and evidence as the stored version 1 verdict: no_oversell failed in 909 runs, reserved_matches_reservations in 443, one_order_per_cart and no_orphaned_orders in none, and no verdict was inconclusive. no_missing_orders held across all 3,120 runs. The stored files still record version 1.

@@ -26,7 +26,7 @@ An expectations file lists scenarios and says, for every check each one runs, wh
 | `cases` | list | yes | At least one case. |
 | `cases[].scenario` | string | yes | A scenario file, as a clean path relative to the repository root, for example `scenarios/medusa/normal-checkout.yaml`. No absolute paths and no `..`. Each scenario at most once per file. |
 | `cases[].note` | string | no | One line of at most 80 characters, for example the issue the case targets. Shown in the summary. |
-| `cases[].expect` | map | yes | Check name to expectation. It must name every check the scenario runs (all four when the scenario leaves `checks` out), and no other check. |
+| `cases[].expect` | map | yes | Check name to expectation. It must name every check the scenario runs (every check when the scenario leaves `checks` out), and no other check. |
 
 Expectations:
 
@@ -83,6 +83,7 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
   - scenario: scenarios/medusa/normal-checkout.yaml
     note: "control for #16502"
     expect:
@@ -90,4 +91,5 @@ cases:
       reserved_matches_reservations: pass_every_run
       one_order_per_cart: pass_every_run
       no_orphaned_orders: pass_every_run
+      no_missing_orders: pass_every_run
 ```
