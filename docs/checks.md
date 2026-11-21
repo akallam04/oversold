@@ -143,6 +143,7 @@ A saved history keeps the name and version of every check that judged it. `overs
 - The Redis lock-call count shows that lock scripts ran, not which keys they locked.
 - `oversold check --verify` shows that the stored verdicts follow from the stored histories, not that the rules cover every business rule.
 - A Medusa release that fixes a bug turns the repro badge red on purpose: the repro workflow expects each known bug to still fail, so a fix shows up as an unmet expectation.
+- no_missing_orders skips every cart that has a complete call with an `unknown` outcome, including that cart's `ok` calls, and it passes when every cart is skipped. In the 3,120 published runs no complete call had an `unknown` outcome, so no published verdict depends on this.
 
 ## Version history
 
