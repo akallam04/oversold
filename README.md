@@ -12,6 +12,32 @@ Bugs like this are easy to miss, because they only show up when two things happe
 2. It has test shoppers check out at the same moment, within a fraction of a millisecond of each other.
 3. It looks inside the store's database to see what really happened, and saves a full record of every test so anyone can check the result.
 
+## See it happen
+
+This happened in a real test saved in this repo: run 13, Medusa 2.22.0, Nov 13, 2026. The store had 1 item left and ran on two servers.
+
+```mermaid
+sequenceDiagram
+    participant A as Shopper A
+    participant S1 as Server 1
+    participant DB as Shared database
+    participant S2 as Server 2
+    participant B as Shopper B
+    Note over DB: 1 item left in stock
+    A->>S1: Place order
+    B->>S2: Place order
+    Note over A,B: Both sent within 0.01 ms of each other
+    S1-->>A: Order confirmed, after 127 ms
+    S2-->>B: Order confirmed, after 127 ms
+    Note over DB: 2 orders for 1 item
+```
+
+Afterwards the database held 2 orders for that 1 item. The store's own count said only 1 unit was held, so its numbers looked like one normal sale. Oversold reads the order rows themselves, which is how it caught this.
+
+Why it happens: by default, each server keeps its lock on the item in its own memory, so the two servers never waited for each other.
+
+**[Full walkthrough](docs/walkthrough.md):** every step of this run, the database before and after, a second bug, and the same tests with each fix.
+
 ## What it showed
 
 Tested on three Medusa releases from 2026 (2.19.0, 2.21.2 and 2.22.0):
@@ -25,8 +51,6 @@ Tested on three Medusa releases from 2026 (2.19.0, 2.21.2 and 2.22.0):
 | As released | 30 of 30 | 30 of 30 |
 | With fix [#17420](https://github.com/medusajs/medusa/pull/17420) | 0 of 30 | 30 of 30 |
 | With fix [#16961](https://github.com/medusajs/medusa/pull/16961) | 30 of 30 | 0 of 30 |
-
-**[See one real test, step by step](docs/walkthrough.md):** what each shopper sent, what the store answered, and what was in the database afterwards.
 
 The bugs were reported by other people on Medusa's public issue tracker, and the two fixes were proposed by other developers. Oversold turned each report into a repeatable test, measured how often each bug happens, and checked both fixes.
 
