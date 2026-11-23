@@ -2,29 +2,45 @@
 
 [![ci](https://github.com/akallam04/oversold/actions/workflows/ci.yml/badge.svg)](https://github.com/akallam04/oversold/actions/workflows/ci.yml) [![repro](https://github.com/akallam04/oversold/actions/workflows/repro.yml/badge.svg)](https://github.com/akallam04/oversold/actions/workflows/repro.yml)
 
-**Jepsen-style history checking applied to full checkout flows.**
+**Oversold tests whether an online store can sell more than it has in stock.**
 
-Oversold is a test harness in Go that races concurrent checkouts against local copies of Medusa, the open-source commerce engine, records every request and the real database rows, and checks stock and order rules against that history.
+Picture a shop with one item left. Two people click "Place order" at the same moment. The shop should sell it once and tell the other person it's sold out. If both get "Order confirmed", the shop has sold something it doesn't have, and one of those orders can't be filled. That's an oversell.
 
-## What it found
+Bugs like this are easy to miss, because they only show up when two things happen at almost exactly the same time. Oversold makes that happen on purpose:
 
-- Races concurrent checkouts against local copies of Medusa and checks stock and order rules on every request and database row: 3,120 recorded runs, every verdict rechecked in CI ([results](results/README.md)).
-- Reproduced two unfixed oversell bugs on Medusa 2.19.0, 2.21.2 and 2.22.0: a multi-line cart oversold in 30 of 30 runs on each ([#16502](https://github.com/medusajs/medusa/issues/16502), [#17436](https://github.com/medusajs/medusa/issues/17436)), and two servers sold the last unit twice in 87 of 90 with the default in-memory lock ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569)) ([results](results/README.md#all-run-sets)).
-- Ran two unmerged community fixes built from each pull request's source ([#16961](https://github.com/medusajs/medusa/pull/16961), [#17420](https://github.com/medusajs/medusa/pull/17420)): each took its own bug to 0 of 30, and neither fixes both ([results](results/README.md#bug-scenarios-side-by-side)).
+1. It runs a real online store on one computer. The store software is [Medusa](https://github.com/medusajs/medusa), which is free and open source.
+2. It has test shoppers check out at the same moment, within a fraction of a millisecond of each other.
+3. It looks inside the store's database to see what really happened, and saves a full record of every test so anyone can check the result.
 
-More in [Findings in detail](results/README.md#findings-in-detail).
+## What it showed
 
-## Status
+Tested on three Medusa releases from 2026 (2.19.0, 2.21.2 and 2.22.0):
 
-The measured runs are in [results/](results/README.md): every scenario in `scenarios/medusa/`, 30 runs each, on Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), with every run's history. Anyone can recompute every verdict from those histories with `oversold check --verify`, and CI does so on every push.
+- **The last item, sold twice.** When the store ran on two servers, as shops do to handle more visitors, both shoppers got the last item in 87 of 90 tries with Medusa's default setup. With the shared lock Medusa's docs recommend for more than one server, it happened in 0 of 90. ([#17032](https://github.com/medusajs/medusa/issues/17032), [#16569](https://github.com/medusajs/medusa/issues/16569))
+- **The cart that didn't add up.** A cart with 4 single widgets and 2 two-packs needs 8 widgets. With only 6 in stock, the store accepted it in 30 of 30 tries on every release, because it checked each line of the cart on its own and never added them up. This one needs no rush: one shopper, one click. ([#16502](https://github.com/medusajs/medusa/issues/16502), [#17436](https://github.com/medusajs/medusa/issues/17436))
+- **Two proposed fixes, tested.** Other developers proposed a fix for each bug. Oversold built the store with each fix and ran the same tests. Each fix stopped its own bug, and neither stopped both:
 
-Five of those scenarios ran with Medusa's Redis locking provider: normal-checkout-two-servers-redis-locking, duplicate-complete-two-servers-redis-locking, two-carts-shared-stock-two-servers-redis-locking, last-unit-two-servers-redis-locking and counter-two-servers-redis-locking, copies of the five two-server scenarios. Every other scenario ran with Medusa's default in-memory locking.
+| Medusa 2.22.0, 30 tries each | Last item sold twice | Cart of 8 accepted with 6 in stock |
+|---|---|---|
+| As released | 30 of 30 | 30 of 30 |
+| With fix [#17420](https://github.com/medusajs/medusa/pull/17420) | 0 of 30 | 30 of 30 |
+| With fix [#16961](https://github.com/medusajs/medusa/pull/16961) | 30 of 30 | 0 of 30 |
 
-Two build variants, each Medusa 2.22.0 with a community pull request that was not merged, ran 30 runs per scenario: pr-16961 ([medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs) on 14 of those scenarios and pr-17420 ([medusajs/medusa#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi) on 15. Plain 2.22.0 ran those 15 scenarios a second time on the same image as pr-17420. [results/](results/README.md#bug-scenarios-side-by-side) puts each next to plain 2.22.0.
+**[See one real test, step by step](docs/walkthrough.md):** what each shopper sent, what the store answered, and what was in the database afterwards.
 
-In all, results/ holds 3,120 runs: 600 on each of 2.19.0, 2.21.2 and 2.22.0, 450 in the plain 2.22.0 rerun, 420 on pr-16961 and 450 on pr-17420.
+The bugs were reported by other people on Medusa's public issue tracker, and the two fixes were proposed by other developers. Oversold turned each report into a repeatable test, measured how often each bug happens, and checked both fixes.
 
-The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
+## In numbers
+
+- 3,120 recorded test runs, each saved in full in [results/](results/README.md).
+- Every saved result is rechecked automatically on every change.
+- It only tests copies running on the local machine, never real stores.
+
+---
+
+## For engineers
+
+Oversold is a Go test harness that applies Jepsen-style history checking to full checkout flows. It races concurrent checkouts against local Docker copies of Medusa, records every request with its outcome (`ok`, `failed` or `unknown`), reads the order, reservation and stock rows before and after the race in read-only Postgres snapshots, and checks stock and order rules over that saved history. Built with Go 1.27, Docker Compose, PostgreSQL 15.19 and Redis 7.4.11. GitHub Actions rechecks every saved result on every push.
 
 ## Reproduce in one command
 
@@ -59,42 +75,6 @@ Measured on one Apple Silicon Mac with Docker Desktop: the first `make repro` fo
 3. Record a history of every request with its start and end time, request, response and outcome: ok, failed, or unknown when it timed out.
 4. Read the real order, reservation and stock rows and check stock and order rules.
 
-## Targets
-
-- Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026), each built from its own committed npm lockfile into its own image (`oversold-medusa:<version>` by default) and run in production mode (`medusa build`, then `medusa start` from `.medusa/server`) on `node:22.23.3-bookworm-slim`. Medusa 2.22.0 needs Node 22.22 or later. A scenario's `target.version` picks the image, and `oversold run --version X` overrides it.
-- The base images are pinned by digest: `node:22.23.3-bookworm-slim@sha256:3ed98443…` in `targets/medusa/Dockerfile`, and `postgres:15.19-alpine@sha256:aae6554d…` and `redis:7.4.11-alpine@sha256:d9436322…` in `compose.yaml`. A tag can move to a new image, so a rebuild from the same tag can sit on a different base. This happened here: the Medusa images rebuilt on Nov 11, 2026 sat on a different `node:22.23.3-bookworm-slim` than the October ones. Each digest is the multi-platform index, which holds both linux/amd64 and linux/arm64, so GitHub's runners and an Apple Silicon Mac pull the same images.
-- The versions Oversold can run are the folders under `targets/medusa/versions/`. A folder counts only when its `package.json` pins every `@medusajs` package to exactly that version and its `package-lock.json` matches. Adding a version needs no code change.
-- Every Medusa image Oversold builds carries an `oversold.image-inputs` label: the SHA-256 of the files it is built from (the Dockerfile, `targets/medusa/app/`, the version folder, and the variant folder for a variant). Before a run set uses an image, Oversold computes the hash again and rebuilds the image when the label is missing or different. Every history records the hash, and a server whose image label differs makes the run a harness error.
-- A build variant is a Medusa image built from one pinned version plus the source change of one pull request, so a proposed fix runs through the same scenarios as the release it patches. A variant is a folder under `targets/medusa/variants/` with a `variant.yaml` that records the pull request, its head commit, its author and state, the source files it changes, and the SHA-256 of each compiled file it replaces in the image, plus those compiled files. The image build copies them over the published files and needs no access to GitHub. A scenario's `target.variant` or `oversold run --variant X` picks a variant, which runs as image `<prefix>:<version>-<variant>` with its own template database. Each history records the variant and the SHA-256 of every replaced file read inside each running container. [docs/variant-format.md](docs/variant-format.md) has the format.
-- The compiled files are made from source, never by hand. `scripts/build-variant.sh <variant>` fetches Medusa at the version's tag and the pull request's commits, applies the pull request's change to its non-test source files, and compiles those packages the way Medusa's package build does, with the TypeScript and tool versions Medusa's `yarn.lock` resolves at that tag. It first compiles the same packages unpatched and stops unless every published `.js` file comes out byte-identical, then compares the patched files with the committed ones and their hashes.
-- The compiled files are copies of Medusa's files, under Medusa's MIT license. [targets/medusa/variants/NOTICE](targets/medusa/variants/NOTICE) holds Medusa's copyright and license notice, the full text of its `LICENSE` file at tag `v2.22.0`, for the files of every variant. A variant without that notice is invalid, and the build script stops if a source file is one of the Enterprise Edition materials that Medusa's `ENTERPRISE-LICENSE.md` lists, which are not under the MIT license.
-- Two variants exist. Both are Medusa 2.22.0 with a community pull request that was closed without being merged.
-  - `pr-16961`: [medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs, which sums the demand of entries that share an inventory item when stock is checked, for [#16502](https://github.com/medusajs/medusa/issues/16502). It replaces `@medusajs/inventory/dist/services/inventory-module.js` and `@medusajs/core-flows/dist/cart/steps/confirm-inventory.js`.
-  - `pr-17420`: [medusajs/medusa#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi, which locks inventory level and reservation rows with `SELECT ... FOR UPDATE` inside the reservation's transaction, with a 3 second `lock_timeout`, for [#16569](https://github.com/medusajs/medusa/issues/16569). It replaces `@medusajs/inventory/dist/services/inventory-module.js`.
-- Runs in local Docker only, on its own `medusa` database in the Compose Postgres. A second server, `medusa-2` on 127.0.0.1:9001 by default, shares the same database and starts only for scenarios that ask for two servers.
-- Uses Medusa's default in-memory modules: local event bus, in-memory cache, in-memory locking and in-memory workflow engine.
-- A scenario with `target.locking: redis` runs its servers with Medusa's Redis locking provider instead, set up the way Medusa's docs show, against a Redis 7.4.11 container in the same Compose project. Medusa recommends that provider when more than one server runs. Only locking changes: the event bus, cache and workflow engine stay in-memory, and migrate and seed keep the default config, so each version still has one template database. Redis starts only for those scenarios, has no published port, keeps nothing on disk and is emptied before every run. Each of those histories records the Redis version and the number of scripted lock calls Medusa made during the race, and a run with none is a harness error. Without the field, Medusa runs with the same config as before the option existed.
-- Admin dashboard is off. Checkouts use the Store API. The Admin API is used only to set stock: after the reset, and for scenarios with `stock_before_race`, again once the carts are prepared.
-
-The seed creates one US region, one stock location and these SKUs:
-
-| SKU | Inventory item | Units per item | Stock |
-|---|---|---|---|
-| OVS-PIECE | WIDGET | 1 | 10 shared |
-| OVS-TWOPACK | WIDGET | 2 | 10 shared |
-| OVS-SOLO | SOLO | 1 | 1 |
-
-## Scenarios and histories
-
-A scenario is a YAML file that sets stock, prepares carts and races requests against them, then repeats that for a number of runs. Every run starts from a fresh copy of a template database made right after migrate and seed, with the Medusa servers restarted, so runs cannot affect each other. Each run writes one JSON history with every HTTP call, its outcome (`ok`, `failed` or `unknown`), database snapshots before and after the race, and the verdict of each chosen check. Secrets are masked before a history is written.
-
-- [docs/scenario-format.md](docs/scenario-format.md): every scenario field and rule, with an example.
-- [docs/expect-format.md](docs/expect-format.md): the expectations file that `oversold expect` and `make repro` run.
-- [docs/variant-format.md](docs/variant-format.md): the build variant folder, `variant.yaml`, and how its files are made and checked.
-- [docs/history-format.md](docs/history-format.md): every history field, the outcome rules and what gets masked.
-- [docs/checks.md](docs/checks.md): the exact rule behind each check, its version, and when a verdict is inconclusive.
-- [scenarios/medusa/](scenarios/medusa/): the scenarios that ship with Oversold.
-
 ## Checks
 
 Checks are pure functions over one saved history, so they need no Docker or database. Each has a version, and [docs/checks.md](docs/checks.md) records every change to a rule. A saved history is always rechecked with the versions it recorded.
@@ -109,9 +89,44 @@ A run is `inconclusive` for every check when the harness failed, a snapshot is m
 
 [Known limits](docs/checks.md#known-limits) lists what the checks do not show.
 
-## Prior work
+## Results
 
-Jepsen (https://jepsen.io) records every operation it sends to a system, including ones whose outcome is unknown, and checks that history against the guarantees the system claims. Oversold applies that idea to full checkout flows. ACIDRain (Warszawski and Bailis, SIGMOD 2017, https://www.bailis.org/papers/acidrain-sigmod2017.pdf) showed that concurrent requests to self-hosted e-commerce applications could corrupt inventory, overspend gift cards and steal items.
+[results/](results/README.md) holds 3,120 runs: 600 on each of 2.19.0, 2.21.2 and 2.22.0, 450 in the plain 2.22.0 rerun, 420 on pr-16961 and 450 on pr-17420. Each folder holds one scenario's 30 runs, with the scenario file, the report and every run's history. Every scenario in `scenarios/medusa/` ran on each of the three versions, pr-16961 ran 14 of them and pr-17420 ran 15, and the plain rerun repeated those 15 on the Medusa 2.22.0 image that pr-17420 was built on.
+
+CI rechecks every folder with `oversold check --verify` on every push, and anyone can run the same check without Docker ([How to recheck](results/README.md#how-to-recheck)). The repro workflow reruns the known bugs next to their controls on every code change, on the newest version folder, and every Monday on the newest `@medusajs/medusa` release on npm.
+
+- [Findings in detail](results/README.md#findings-in-detail): what the runs showed, with the counts behind each finding.
+- [Bug scenarios side by side](results/README.md#bug-scenarios-side-by-side): each bug scenario on plain 2.22.0, with Redis locking and with each proposed fix.
+
+## Targets
+
+- Medusa 2.19.0 (released Aug 13, 2026), 2.21.2 (released Sep 28, 2026) and 2.22.0 (released Oct 21, 2026).
+- One or two Medusa servers on one Postgres database.
+- Medusa's default in-memory locking, or its Redis locking provider, chosen per scenario.
+- Two build variants, each Medusa 2.22.0 with a community fix: pr-16961 ([medusajs/medusa#16961](https://github.com/medusajs/medusa/pull/16961) by pqa-labs) and pr-17420 ([medusajs/medusa#17420](https://github.com/medusajs/medusa/pull/17420) by haranishi).
+
+The seed creates one US region, one stock location and these SKUs:
+
+| SKU | Inventory item | Units per item | Stock |
+|---|---|---|---|
+| OVS-PIECE | WIDGET | 1 | 10 shared |
+| OVS-TWOPACK | WIDGET | 2 | 10 shared |
+| OVS-SOLO | SOLO | 1 | 1 |
+
+[docs/targets.md](docs/targets.md) has the full list: how each image is built and pinned, how build variants are made from source, and how Medusa runs.
+
+## Scenarios and histories
+
+A scenario is a YAML file that sets stock, prepares carts and races requests against them, then repeats that for a number of runs. Every run starts from a fresh copy of a template database made right after migrate and seed, with the Medusa servers restarted, so runs cannot affect each other. Each run writes one JSON history with every HTTP call, its outcome (`ok`, `failed` or `unknown`), database snapshots before and after the race, and the verdict of each chosen check. Secrets are masked before a history is written.
+
+- [docs/scenario-format.md](docs/scenario-format.md): every scenario field and rule, with an example.
+- [docs/expect-format.md](docs/expect-format.md): the expectations file that `oversold expect` and `make repro` run.
+- [docs/variant-format.md](docs/variant-format.md): the build variant folder, `variant.yaml`, and how its files are made and checked.
+- [docs/history-format.md](docs/history-format.md): every history field, the outcome rules and what gets masked.
+- [docs/checks.md](docs/checks.md): the exact rule behind each check, its version, and when a verdict is inconclusive.
+- [docs/targets.md](docs/targets.md): the Medusa versions, images, build variants and settings Oversold runs against, and the seeded SKUs.
+- [docs/walkthrough.md](docs/walkthrough.md): two real saved runs, step by step, with the files they came from.
+- [scenarios/medusa/](scenarios/medusa/): the scenarios that ship with Oversold.
 
 ## Run it
 
@@ -173,6 +188,10 @@ Both commands exit 0 when every chosen check passed in every run, 1 when any che
 
 To add a Medusa version, run `scripts/add-medusa-version.sh X.Y.Z` and commit the folder it creates. The script copies the newest folder under `targets/medusa/versions/`, sets every `@medusajs` package to exactly X.Y.Z, copies `engines.node` from `@medusajs/medusa@X.Y.Z`, stops if the Node version in `targets/medusa/Dockerfile` does not satisfy it, and makes the lockfile inside that Node image. It needs Docker, Go and network access to npm.
 
+## Prior work
+
+Jepsen (https://jepsen.io) records every operation it sends to a system, including ones whose outcome is unknown, and checks that history against the guarantees the system claims. Oversold applies that idea to full checkout flows. ACIDRain (Warszawski and Bailis, SIGMOD 2017, https://www.bailis.org/papers/acidrain-sigmod2017.pdf) showed that concurrent requests to self-hosted e-commerce applications could corrupt inventory, overspend gift cards and steal items.
+
 ## Safety
 
 Oversold only runs against local copies it starts in Docker, never live stores or public services. Security bugs found in an engine are reported privately to that project first.
@@ -196,7 +215,7 @@ internal/envfile/              reads .env
 scenarios/medusa/              shipped scenarios
 expectations/                  known bugs next to their controls, for oversold expect and make repro
 results/                       measured run sets: scenario, report and gzipped histories
-docs/                          scenario, expectation, variant and history formats, and check rules
+docs/                          scenario, expectation, variant and history formats, check rules, targets and a walkthrough of two saved runs
 targets/medusa/Dockerfile      builds and runs one pinned Medusa version, and its variants
 targets/medusa/app/            shared medusa-config.ts, tsconfig and seed script
 targets/medusa/versions/       one pinned package.json and lockfile per Medusa version
